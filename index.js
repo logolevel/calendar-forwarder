@@ -37,12 +37,24 @@ function buildMessage(eventDate, colorId, shortType, isExpanded, currentTitle, h
 }
 
 app.post('/calendar-webhook', async (req, res) => {
+    console.log('📩 Отримано webhook від Google:', req.body); 
+
     const { eventId, status, title, date, colorId = '0' } = req.body;
     const shortTypeMatch = title.match(/^([^\s,]+)/);
     const shortType = shortTypeMatch ? shortTypeMatch[1] : 'Тренування';
 
     try {
-        if (status === 'created') {
+        const dbRes = await pool.query('SELECT * FROM events WHERE google_event_id = $1', [eventId]);
+        const eventExists = dbRes.rows.length > 0;
+
+        if (status === 'deleted') {
+            if (eventExists) {
+                 await bot.telegram.sendMessage(CHAT_ID, `🗑 <b>Подія була видалена.</b>`, {
+                    parse_mode: 'HTML',
+                    reply_parameters: { message_id: dbRes.rows[0].message_id }
+                });
+            }
+        } else if (!eventExists) {
             const text = buildMessage(date, colorId, shortType, false, title, []);
             const sentMessage = await bot.telegram.sendMessage(CHAT_ID, text, {
                 parse_mode: 'HTML',
@@ -57,35 +69,24 @@ app.post('/calendar-webhook', async (req, res) => {
                 [eventId, sentMessage.message_id, title, date, colorId]
             );
 
-        } else if (status === 'updated') {
-            const dbRes = await pool.query('SELECT * FROM events WHERE google_event_id = $1', [eventId]);
-            if (dbRes.rows.length > 0) {
-                const event = dbRes.rows[0];
-                const newHistory = [...event.history, { time: new Date().toISOString(), text: event.current_title }];
-                
-                await pool.query(
-                    'UPDATE events SET current_title = $1, history = $2::jsonb WHERE google_event_id = $3',
-                    [title, JSON.stringify(newHistory), eventId]
-                );
+        } else {
+            const event = dbRes.rows[0];
+            const newHistory = [...event.history, { time: new Date().toISOString(), text: event.current_title }];
+            
+            await pool.query(
+                'UPDATE events SET current_title = $1, history = $2::jsonb WHERE google_event_id = $3',
+                [title, JSON.stringify(newHistory), eventId]
+            );
 
-                const replyText = `✏️ <b>Подія була відредагована!</b>\nНовий рядок:\n<i>${title}</i>`;
-                await bot.telegram.sendMessage(CHAT_ID, replyText, {
-                    parse_mode: 'HTML',
-                    reply_parameters: { message_id: event.message_id }
-                });
-            }
-        } else if (status === 'deleted') {
-            const dbRes = await pool.query('SELECT message_id FROM events WHERE google_event_id = $1', [eventId]);
-            if (dbRes.rows.length > 0) {
-                 await bot.telegram.sendMessage(CHAT_ID, `🗑 <b>Подія була видалена.</b>`, {
-                    parse_mode: 'HTML',
-                    reply_parameters: { message_id: dbRes.rows[0].message_id }
-                });
-            }
+            const replyText = `✏️ <b>Подія була відредагована!</b>\nНовий рядок:\n<i>${title}</i>`;
+            await bot.telegram.sendMessage(CHAT_ID, replyText, {
+                parse_mode: 'HTML',
+                reply_parameters: { message_id: event.message_id }
+            });
         }
         res.status(200).send('OK');
     } catch (error) {
-        console.error(error);
+        console.error('❌ Помилка в webhook:', error);
         res.status(500).send('Error');
     }
 });
@@ -127,7 +128,9 @@ bot.action(/^(expand|collapse)_(.+)$/, async (ctx) => {
 bot.launch();
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT);
+app.listen(PORT, () => {
+    console.log(`🚀 Сервер запущено на порту ${PORT}`);
+});
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
