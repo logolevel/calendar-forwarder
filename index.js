@@ -12,37 +12,43 @@ app.use(express.json());
 const CHAT_ID = process.env.CHAT_ID; 
 
 function getColorEmoji(colorValue) {
-    if (colorValue === '11' || colorValue === '4') return '🔴';
-    if (colorValue === '10' || colorValue === '2') return '🟢';
-    if (colorValue === '8') return '🔘';
-    
-    if (colorValue && colorValue.startsWith('#')) {
-        const hex = colorValue.toUpperCase();
-        if (['#D50000', '#E67C73', '#D81B60', '#F4511E'].includes(hex)) return '🔴';
-        if (['#0B8043', '#33B679', '#009688', '#7CB342'].includes(hex)) return '🟢';
-        if (['#616161', '#9E9E9E'].includes(hex)) return '🔘';
-    }
-    
-    return '⚪️';
+    const colorMap = {
+        '1': '🔵', '2': '🟢', '3': '🟣', '4': '🔴', '5': '🟡', 
+        '6': '🟠', '7': '🔵', '8': '🔘', '9': '🔵', '10': '🟢', '11': '🔴',
+        '#AC725E': '🟤', '#D06B64': '🔴', '#F83A22': '🔴', '#FA573C': '🟠', '#FF7537': '🟠',
+        '#FFAD46': '🟡', '#42D692': '🟢', '#16A765': '🟢', '#7BD148': '🟢', '#B3DC6C': '🟢',
+        '#FBE983': '🟡', '#FAD165': '🟡', '#92E1C0': '🟢', '#9FE1E7': '🔵', '#9FC6E7': '🔵',
+        '#4986E7': '🔵', '#9A9CFF': '🟣', '#B99AFF': '🟣', '#C2C2C2': '🔘', '#CABDBF': '🟤',
+        '#CCA6AC': '🟣', '#F691B2': '🌸', '#CD74E6': '🟣', '#A47AE2': '🟣', '#039BE5': '🔵'
+    };
+
+    const val = colorValue ? colorValue.toUpperCase() : '';
+    return colorMap[val] || '⚪️';
 }
 
-function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history) {
+function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history, eventLink) {
     const emoji = getColorEmoji(colorValue);
     let text = `${emoji} ${eventDate}\n\n`;
     text += `${currentTitle}\n\n`;
-    text += `Створено: ${creatorEmail}`;
+    
+    const safeEmail = creatorEmail.replace('@', '@\u200B');
+    text += `<i>Створено: ${safeEmail}</i>\n`;
+    
+    if (eventLink) {
+        text += `<a href="${eventLink}">Посилання на подію</a>`;
+    }
     
     if (history && history.length > 0) {
         text += `\n\n🕒 <b>Історія редагування:</b>\n\n`;
         history.forEach((h, index) => {
-            text += `${index + 1}. <s>${h.text}</s>\n`;
+            text += `${index + 1}. ${h.text}\n`;
         });
     }
     return text;
 }
 
 app.post('/calendar-webhook', async (req, res) => {
-    const { eventId, status, title, date, colorId = '0', creatorEmail = 'невідомо' } = req.body;
+    const { eventId, status, title, date, colorId = '0', creatorEmail = 'невідомо', eventLink = '' } = req.body;
 
     try {
         const dbRes = await pool.query('SELECT * FROM events WHERE google_event_id = $1', [eventId]);
@@ -55,36 +61,51 @@ app.post('/calendar-webhook', async (req, res) => {
                 });
             }
         } else if (!eventExists) {
-            const text = buildMessage(date, colorId, title, creatorEmail, []);
+            const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink);
             
             const sentMessage = await bot.telegram.sendMessage(CHAT_ID, text, {
-                parse_mode: 'HTML'
+                parse_mode: 'HTML',
+                disable_web_page_preview: true
             });
 
             await pool.query(
-                `INSERT INTO events (google_event_id, message_id, current_title, event_date, color_id, creator_email) 
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                [eventId, sentMessage.message_id, title, date, colorId, creatorEmail]
+                `INSERT INTO events (google_event_id, message_id, current_title, event_date, color_id, creator_email, event_link) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [eventId, sentMessage.message_id, title, date, colorId, creatorEmail, eventLink]
             );
 
         } else {
             const event = dbRes.rows[0];
             let newHistory = event.history;
+            let changes = [];
             
             if (event.current_title !== title) {
-                 newHistory = [...event.history, { time: new Date().toISOString(), text: event.current_title }];
+                changes.push(`назва <s>${event.current_title}</s>`);
+            }
+            if (event.event_date !== date) {
+                changes.push(`дата <s>${event.event_date}</s>`);
+            }
+            if (event.color_id !== colorId) {
+                changes.push(`колір <s>${getColorEmoji(event.color_id)}</s>`);
             }
             
+            if (changes.length > 0) {
+                 newHistory = [...event.history, { time: new Date().toISOString(), text: changes.join(', ') }];
+            }
+            
+            const finalLink = eventLink || event.event_link;
+
             await pool.query(
-                'UPDATE events SET current_title = $1, history = $2::jsonb, color_id = $3 WHERE google_event_id = $4',
-                [title, JSON.stringify(newHistory), colorId, eventId]
+                'UPDATE events SET current_title = $1, history = $2::jsonb, color_id = $3, event_date = $4, event_link = $5 WHERE google_event_id = $6',
+                [title, JSON.stringify(newHistory), colorId, date, finalLink, eventId]
             );
 
-            const updatedText = buildMessage(event.event_date, colorId, title, event.creator_email, newHistory);
+            const updatedText = buildMessage(date, colorId, title, event.creator_email, newHistory, finalLink);
             
             try {
                 await bot.telegram.editMessageText(CHAT_ID, event.message_id, null, updatedText, {
-                    parse_mode: 'HTML'
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true
                 });
             } catch (err) {
                 console.log(err);
