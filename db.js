@@ -17,6 +17,8 @@ async function initDB() {
             history JSONB DEFAULT '[]'::jsonb
         );
     `);
+
+    await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS creator_email TEXT DEFAULT 'невідомо';`);
 }
 
 module.exports = { pool, initDB };

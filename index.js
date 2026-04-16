@@ -18,30 +18,23 @@ function getColorEmoji(colorId) {
     return '⚪️';
 }
 
-function buildMessage(eventDate, colorId, shortType, isExpanded, currentTitle, history) {
+function buildMessage(eventDate, colorId, currentTitle, creatorEmail, history, isExpanded) {
     const emoji = getColorEmoji(colorId);
-    let text = `<blockquote expandable>${emoji} <b>${shortType}</b>\n📅 Дата: ${eventDate}</blockquote>`;
+    let text = `${emoji} ${eventDate}\n\n`;
+    text += `${currentTitle}\n\n`;
+    text += `Створено: ${creatorEmail}`;
     
-    if (isExpanded) {
-        text += `\n\n📝 <b>Поточний рядок:</b>\n<i>${currentTitle}</i>\n`;
-        if (history && history.length > 0) {
-            text += `\n🔄 <b>Історія змін:</b>\n`;
-            history.forEach((h, index) => {
-                text += `${index + 1}. ${h.text}\n`;
-            });
-        } else {
-            text += `\n<i>Поки що без змін</i>`;
-        }
+    if (isExpanded && history && history.length > 0) {
+        text += `\n\n🔄 <b>Історія редагування:</b>\n`;
+        history.forEach((h, index) => {
+            text += `${index + 1}. <s>${h.text}</s>\n`;
+        });
     }
     return text;
 }
 
 app.post('/calendar-webhook', async (req, res) => {
-    console.log('📩 Отримано webhook від Google:', req.body); 
-
-    const { eventId, status, title, date, colorId = '0' } = req.body;
-    const shortTypeMatch = title.match(/^([^\s,]+)/);
-    const shortType = shortTypeMatch ? shortTypeMatch[1] : 'Тренування';
+    const { eventId, status, title, date, colorId = '0', creatorEmail = 'невідомо' } = req.body;
 
     try {
         const dbRes = await pool.query('SELECT * FROM events WHERE google_event_id = $1', [eventId]);
@@ -49,44 +42,56 @@ app.post('/calendar-webhook', async (req, res) => {
 
         if (status === 'deleted') {
             if (eventExists) {
-                 await bot.telegram.sendMessage(CHAT_ID, `🗑 <b>Подія була видалена.</b>`, {
-                    parse_mode: 'HTML',
+                 await bot.telegram.sendMessage(CHAT_ID, `Видалено`, {
                     reply_parameters: { message_id: dbRes.rows[0].message_id }
                 });
             }
         } else if (!eventExists) {
-            const text = buildMessage(date, colorId, shortType, false, title, []);
+            const text = buildMessage(date, colorId, title, creatorEmail, [], false);
+            
             const sentMessage = await bot.telegram.sendMessage(CHAT_ID, text, {
-                parse_mode: 'HTML',
-                ...Markup.inlineKeyboard([
-                    Markup.button.callback('🔽 Деталі', `expand_${eventId}`)
-                ])
+                parse_mode: 'HTML'
             });
 
             await pool.query(
-                `INSERT INTO events (google_event_id, message_id, current_title, event_date, color_id) 
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [eventId, sentMessage.message_id, title, date, colorId]
+                `INSERT INTO events (google_event_id, message_id, current_title, event_date, color_id, creator_email) 
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [eventId, sentMessage.message_id, title, date, colorId, creatorEmail]
             );
 
         } else {
             const event = dbRes.rows[0];
-            const newHistory = [...event.history, { time: new Date().toISOString(), text: event.current_title }];
+            let newHistory = event.history;
+            
+            if (event.current_title !== title) {
+                 newHistory = [...event.history, { time: new Date().toISOString(), text: event.current_title }];
+            }
             
             await pool.query(
                 'UPDATE events SET current_title = $1, history = $2::jsonb WHERE google_event_id = $3',
                 [title, JSON.stringify(newHistory), eventId]
             );
 
-            const replyText = `✏️ <b>Подія була відредагована!</b>\nНовий рядок:\n<i>${title}</i>`;
-            await bot.telegram.sendMessage(CHAT_ID, replyText, {
-                parse_mode: 'HTML',
+            const updatedText = buildMessage(event.event_date, event.color_id, title, event.creator_email, newHistory, false);
+            
+            try {
+                await bot.telegram.editMessageText(CHAT_ID, event.message_id, null, updatedText, {
+                    parse_mode: 'HTML',
+                    ...Markup.inlineKeyboard([
+                        Markup.button.callback('🔽 Історія', `expand_${eventId}`)
+                    ])
+                });
+            } catch (err) {
+                console.log(err);
+            }
+
+            await bot.telegram.sendMessage(CHAT_ID, `Відредаговано`, {
                 reply_parameters: { message_id: event.message_id }
             });
         }
         res.status(200).send('OK');
     } catch (error) {
-        console.error('❌ Помилка в webhook:', error);
+        console.error(error);
         res.status(500).send('Error');
     }
 });
@@ -97,18 +102,16 @@ bot.action(/^(expand|collapse)_(.+)$/, async (ctx) => {
 
     try {
         const dbRes = await pool.query('SELECT * FROM events WHERE google_event_id = $1', [eventId]);
-        
         if (dbRes.rows.length === 0) {
-            return ctx.answerCbQuery('Дані не знайдені або застаріли.', { show_alert: true });
+            return ctx.answerCbQuery('Дані не знайдені.', { show_alert: true });
         }
 
         const event = dbRes.rows[0];
-        const shortTypeMatch = event.current_title.match(/^([^\s,]+)/);
-        const shortType = shortTypeMatch ? shortTypeMatch[1] : 'Тренування';
         const isExpanded = action === 'expand';
 
-        const newText = buildMessage(event.event_date, event.color_id, shortType, isExpanded, event.current_title, event.history);
-        const buttonText = isExpanded ? '🔼 Згорнути' : '🔽 Деталі';
+        const newText = buildMessage(event.event_date, event.color_id, event.current_title, event.creator_email, event.history, isExpanded);
+        
+        const buttonText = isExpanded ? '🔼 Згорнути' : '🔽 Історія';
         const nextAction = isExpanded ? `collapse_${eventId}` : `expand_${eventId}`;
 
         await ctx.editMessageText(newText, {
@@ -128,9 +131,7 @@ bot.action(/^(expand|collapse)_(.+)$/, async (ctx) => {
 bot.launch();
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Сервер запущено на порту ${PORT}`);
-});
+app.listen(PORT);
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
