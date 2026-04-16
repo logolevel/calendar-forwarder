@@ -31,15 +31,15 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
     let text = `${emoji} ${eventDate}\n\n`;
     text += `${currentTitle}\n\n`;
     
-    const safeEmail = creatorEmail.replace('@', '@\u200B');
-    text += `<i>Створено: ${safeEmail}</i>\n`;
+    const safeEmail = creatorEmail.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
+    text += `<i>Створено: ${safeEmail}</i>\n\n`;
     
     if (eventLink) {
         text += `<a href="${eventLink}">Посилання на подію</a>`;
     }
     
     if (history && history.length > 0) {
-        text += `\n\n🕒 <b>Історія редагування:</b>\n\n`;
+        text += `\n\n🕒 Історія редагування:\n\n`;
         history.forEach((h, index) => {
             text += `${index + 1}. ${h.text}\n`;
         });
@@ -80,13 +80,13 @@ app.post('/calendar-webhook', async (req, res) => {
             let changes = [];
             
             if (event.current_title !== title) {
-                changes.push(`назва <s>${event.current_title}</s>`);
+                changes.push(`<s>${event.current_title}</s>`);
             }
             if (event.event_date !== date) {
-                changes.push(`дата <s>${event.event_date}</s>`);
+                changes.push(`<s>${event.event_date}</s>`);
             }
             if (event.color_id !== colorId) {
-                changes.push(`колір <s>${getColorEmoji(event.color_id)}</s>`);
+                changes.push(`Майданчик <s>${getColorEmoji(event.color_id)}</s>`);
             }
             
             if (changes.length > 0) {
