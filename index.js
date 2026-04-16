@@ -41,7 +41,8 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
     if (history && history.length > 0) {
         text += `\n\n🕒 Історія редагування:\n\n`;
         history.forEach((h, index) => {
-            text += `${index + 1}. ${h.text}\n`;
+            const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+            text += `${index + 1}. ${h.text} <i>(${timeStr})</i>\n`;
         });
     }
     return text;
@@ -86,7 +87,7 @@ app.post('/calendar-webhook', async (req, res) => {
                 changes.push(`<s>${event.event_date}</s>`);
             }
             if (event.color_id !== colorId) {
-                changes.push(`Майданчик <s>${getColorEmoji(event.color_id)}</s>`);
+                changes.push(`<s>Майданчик ${getColorEmoji(event.color_id)}</s>`);
             }
             
             if (changes.length > 0) {
