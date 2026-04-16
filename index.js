@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const { pool, initDB } = require('./db');
 
 initDB();
@@ -11,21 +11,29 @@ app.use(express.json());
 
 const CHAT_ID = process.env.CHAT_ID; 
 
-function getColorEmoji(colorId) {
-    if (colorId === '11' || colorId === '4') return '🔴';
-    if (colorId === '10' || colorId === '2') return '🟢';
-    if (colorId === '8') return '🔘';
+function getColorEmoji(colorValue) {
+    if (colorValue === '11' || colorValue === '4') return '🔴';
+    if (colorValue === '10' || colorValue === '2') return '🟢';
+    if (colorValue === '8') return '🔘';
+    
+    if (colorValue && colorValue.startsWith('#')) {
+        const hex = colorValue.toUpperCase();
+        if (['#D50000', '#E67C73', '#D81B60', '#F4511E'].includes(hex)) return '🔴';
+        if (['#0B8043', '#33B679', '#009688', '#7CB342'].includes(hex)) return '🟢';
+        if (['#616161', '#9E9E9E'].includes(hex)) return '🔘';
+    }
+    
     return '⚪️';
 }
 
-function buildMessage(eventDate, colorId, currentTitle, creatorEmail, history, isExpanded) {
-    const emoji = getColorEmoji(colorId);
+function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history) {
+    const emoji = getColorEmoji(colorValue);
     let text = `${emoji} ${eventDate}\n\n`;
     text += `${currentTitle}\n\n`;
     text += `Створено: ${creatorEmail}`;
     
-    if (isExpanded && history && history.length > 0) {
-        text += `\n\n🔄 <b>Історія редагування:</b>\n`;
+    if (history && history.length > 0) {
+        text += `\n\n🕒 <b>Історія редагування:</b>\n\n`;
         history.forEach((h, index) => {
             text += `${index + 1}. <s>${h.text}</s>\n`;
         });
@@ -47,7 +55,7 @@ app.post('/calendar-webhook', async (req, res) => {
                 });
             }
         } else if (!eventExists) {
-            const text = buildMessage(date, colorId, title, creatorEmail, [], false);
+            const text = buildMessage(date, colorId, title, creatorEmail, []);
             
             const sentMessage = await bot.telegram.sendMessage(CHAT_ID, text, {
                 parse_mode: 'HTML'
@@ -68,18 +76,15 @@ app.post('/calendar-webhook', async (req, res) => {
             }
             
             await pool.query(
-                'UPDATE events SET current_title = $1, history = $2::jsonb WHERE google_event_id = $3',
-                [title, JSON.stringify(newHistory), eventId]
+                'UPDATE events SET current_title = $1, history = $2::jsonb, color_id = $3 WHERE google_event_id = $4',
+                [title, JSON.stringify(newHistory), colorId, eventId]
             );
 
-            const updatedText = buildMessage(event.event_date, event.color_id, title, event.creator_email, newHistory, false);
+            const updatedText = buildMessage(event.event_date, colorId, title, event.creator_email, newHistory);
             
             try {
                 await bot.telegram.editMessageText(CHAT_ID, event.message_id, null, updatedText, {
-                    parse_mode: 'HTML',
-                    ...Markup.inlineKeyboard([
-                        Markup.button.callback('🔽 Історія', `expand_${eventId}`)
-                    ])
+                    parse_mode: 'HTML'
                 });
             } catch (err) {
                 console.log(err);
@@ -93,38 +98,6 @@ app.post('/calendar-webhook', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).send('Error');
-    }
-});
-
-bot.action(/^(expand|collapse)_(.+)$/, async (ctx) => {
-    const action = ctx.match[1];
-    const eventId = ctx.match[2];
-
-    try {
-        const dbRes = await pool.query('SELECT * FROM events WHERE google_event_id = $1', [eventId]);
-        if (dbRes.rows.length === 0) {
-            return ctx.answerCbQuery('Дані не знайдені.', { show_alert: true });
-        }
-
-        const event = dbRes.rows[0];
-        const isExpanded = action === 'expand';
-
-        const newText = buildMessage(event.event_date, event.color_id, event.current_title, event.creator_email, event.history, isExpanded);
-        
-        const buttonText = isExpanded ? '🔼 Згорнути' : '🔽 Історія';
-        const nextAction = isExpanded ? `collapse_${eventId}` : `expand_${eventId}`;
-
-        await ctx.editMessageText(newText, {
-            parse_mode: 'HTML',
-            ...Markup.inlineKeyboard([
-                Markup.button.callback(buttonText, nextAction)
-            ])
-        });
-
-        await ctx.answerCbQuery();
-    } catch (error) {
-        console.error(error);
-        await ctx.answerCbQuery('Відбулася помилка', { show_alert: true });
     }
 });
 
