@@ -84,7 +84,9 @@ app.post('/calendar-webhook', async (req, res) => {
                  let finalHistory = event.history || [];
                  finalHistory.push({ time: new Date().toISOString(), text: `<s>${event.current_title}</s>` });
 
-                 let updatedText = `<blockquote><b>Подія була видалена</b>\n\n🕒 Історія редагування:\n\n`;
+                 const safeEmail = (event.creator_email || 'невідомо').replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
+
+                 let updatedText = `<blockquote><b>Подія була видалена</b>\n\n<i>Створювалась: ${safeEmail}</i>\n\n🕒 Історія редагування:\n\n`;
                  finalHistory.forEach((h, index) => {
                      const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '');
                      updatedText += `${index + 1}. ${h.text} <i>(${timeStr})</i>\n`;
