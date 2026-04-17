@@ -51,8 +51,12 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
 app.post('/calendar-webhook', async (req, res) => {
     const { eventId, status, title, date, colorId = '0', creatorEmail = 'невідомо', eventLink = '' } = req.body;
 
+    const client = await pool.connect();
+
     try {
-        const dbRes = await pool.query('SELECT * FROM events WHERE google_event_id = $1', [eventId]);
+        await client.query('BEGIN');
+
+        const dbRes = await client.query('SELECT * FROM events WHERE google_event_id = $1 FOR UPDATE', [eventId]);
         const eventExists = dbRes.rows.length > 0;
 
         if (status === 'deleted') {
@@ -69,7 +73,7 @@ app.post('/calendar-webhook', async (req, res) => {
                 disable_web_page_preview: true
             });
 
-            await pool.query(
+            await client.query(
                 `INSERT INTO events (google_event_id, message_id, current_title, event_date, color_id, creator_email, event_link) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 [eventId, sentMessage.message_id, title, date, colorId, creatorEmail, eventLink]
@@ -89,37 +93,39 @@ app.post('/calendar-webhook', async (req, res) => {
                 changes.push(`<s>Майданчик ${getColorEmoji(event.color_id)}</s>`);
             }
             
-            if (changes.length === 0) {
-                return res.status(200).send('OK');
+            if (changes.length > 0) {
+                 let newHistory = [...event.history, { time: new Date().toISOString(), text: changes.join(', ') }];
+                 const finalLink = eventLink || event.event_link;
+
+                 await client.query(
+                     'UPDATE events SET current_title = $1, history = $2::jsonb, color_id = $3, event_date = $4, event_link = $5 WHERE google_event_id = $6',
+                     [title, JSON.stringify(newHistory), colorId, date, finalLink, eventId]
+                 );
+
+                 const updatedText = buildMessage(date, colorId, title, event.creator_email, newHistory, finalLink);
+                 
+                 try {
+                     await bot.telegram.editMessageText(CHAT_ID, event.message_id, null, updatedText, {
+                         parse_mode: 'HTML',
+                         disable_web_page_preview: true
+                     });
+                 } catch (err) {
+                     console.log(err);
+                 }
+
+                 await bot.telegram.sendMessage(CHAT_ID, `Відредаговано`, {
+                     reply_parameters: { message_id: event.message_id }
+                 });
             }
-            
-            let newHistory = [...event.history, { time: new Date().toISOString(), text: changes.join(', ') }];
-            const finalLink = eventLink || event.event_link;
-
-            await pool.query(
-                'UPDATE events SET current_title = $1, history = $2::jsonb, color_id = $3, event_date = $4, event_link = $5 WHERE google_event_id = $6',
-                [title, JSON.stringify(newHistory), colorId, date, finalLink, eventId]
-            );
-
-            const updatedText = buildMessage(date, colorId, title, event.creator_email, newHistory, finalLink);
-            
-            try {
-                await bot.telegram.editMessageText(CHAT_ID, event.message_id, null, updatedText, {
-                    parse_mode: 'HTML',
-                    disable_web_page_preview: true
-                });
-            } catch (err) {
-                console.log(err);
-            }
-
-            await bot.telegram.sendMessage(CHAT_ID, `Відредаговано`, {
-                reply_parameters: { message_id: event.message_id }
-            });
         }
+        await client.query('COMMIT');
         res.status(200).send('OK');
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error(error);
         res.status(500).send('Error');
+    } finally {
+        client.release();
     }
 });
 
