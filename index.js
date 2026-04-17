@@ -28,7 +28,7 @@ function getColorEmoji(colorValue) {
 
 function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history, eventLink) {
     const emoji = getColorEmoji(colorValue);
-    let text = `${emoji} ${eventDate}\n\n`;
+    let text = `<blockquote>${emoji} ${eventDate}\n\n`;
     text += `${currentTitle}\n\n`;
     
     const safeEmail = creatorEmail.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
@@ -45,6 +45,8 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
             text += `${index + 1}. ${h.text} <i>(${timeStr})</i>\n`;
         });
     }
+    
+    text += `</blockquote>`;
     return text;
 }
 
