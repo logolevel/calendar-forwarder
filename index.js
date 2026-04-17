@@ -11,6 +11,31 @@ app.use(express.json());
 
 const CHAT_ID = process.env.CHAT_ID; 
 
+function formatEventDate(start, end, timeZone) {
+    if (!start) return 'Дата не вказана';
+    const months = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
+    const tz = timeZone || 'Europe/Kyiv';
+
+    if (start.date) {
+        const parts = start.date.split('-');
+        return `${parseInt(parts[2], 10)} ${months[parseInt(parts[1], 10) - 1]}, весь день`;
+    } else if (start.dateTime && end && end.dateTime) {
+        const startD = new Date(start.dateTime);
+        const endD = new Date(end.dateTime);
+        
+        const options = { timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit' };
+        const startStr = startD.toLocaleTimeString('uk-UA', options);
+        const endStr = endD.toLocaleTimeString('uk-UA', options);
+        
+        const dateParts = new Intl.DateTimeFormat('en-US', { timeZone: tz, day: 'numeric', month: 'numeric' }).formatToParts(startD);
+        const day = dateParts.find(p => p.type === 'day').value;
+        const monthIdx = parseInt(dateParts.find(p => p.type === 'month').value, 10) - 1;
+
+        return `${day} ${months[monthIdx]}, з ${startStr} по ${endStr}`;
+    }
+    return 'Дата не вказана';
+}
+
 function getColorEmoji(colorValue) {
     const colorMap = {
         '1': '🔵', '2': '🟢', '3': '🟣', '4': '🔴', '5': '🟡', 
@@ -21,7 +46,6 @@ function getColorEmoji(colorValue) {
         '#4986E7': '🔵', '#9A9CFF': '🟣', '#B99AFF': '🟣', '#C2C2C2': '🔘', '#CABDBF': '🟤',
         '#CCA6AC': '🟣', '#F691B2': '🌸', '#CD74E6': '🟣', '#A47AE2': '🟣', '#039BE5': '🔵'
     };
-
     const val = colorValue ? colorValue.toUpperCase() : '';
     return colorMap[val] || '⚪️';
 }
@@ -30,14 +54,9 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
     const emoji = getColorEmoji(colorValue);
     let text = `<blockquote>${emoji} ${eventDate}\n\n`;
     text += `${currentTitle}\n\n`;
-    
     const safeEmail = creatorEmail.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
     text += `<i>Створено: ${safeEmail}</i>\n\n`;
-    
-    if (eventLink) {
-        text += `<a href="${eventLink}">Посилання на подію</a>`;
-    }
-    
+    if (eventLink) text += `<a href="${eventLink}">Посилання на подію</a>`;
     if (history && history.length > 0) {
         text += `\n\n🕒 Історія редагування:\n\n`;
         history.forEach((h, index) => {
@@ -45,19 +64,17 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
             text += `${index + 1}. ${h.text} <i>(${timeStr})</i>\n`;
         });
     }
-    
     text += `</blockquote>`;
     return text;
 }
 
 app.post('/calendar-webhook', async (req, res) => {
-    const { eventId, status, title, date, colorId = '0', creatorEmail = 'невідомо', eventLink = '' } = req.body;
-
+    const { eventId, status, title, start, end, calendarTimeZone, colorId = '0', creatorEmail = 'невідомо', eventLink = '' } = req.body;
+    const date = formatEventDate(start, end, calendarTimeZone);
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
-
         const dbRes = await client.query('SELECT * FROM events WHERE google_event_id = $1 FOR UPDATE', [eventId]);
         const eventExists = dbRes.rows.length > 0;
 
@@ -65,56 +82,40 @@ app.post('/calendar-webhook', async (req, res) => {
             if (eventExists) {
                  await bot.telegram.sendMessage(CHAT_ID, `Видалено`, {
                     reply_parameters: { message_id: dbRes.rows[0].message_id }
-                });
+                 });
             }
         } else if (!eventExists) {
             const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink);
-            
             const sentMessage = await bot.telegram.sendMessage(CHAT_ID, text, {
                 parse_mode: 'HTML',
                 disable_web_page_preview: true
             });
-
             await client.query(
                 `INSERT INTO events (google_event_id, message_id, current_title, event_date, color_id, creator_email, event_link) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 [eventId, sentMessage.message_id, title, date, colorId, creatorEmail, eventLink]
             );
-
         } else {
             const event = dbRes.rows[0];
             let changes = [];
-            
-            if (event.current_title !== title) {
-                changes.push(`<s>${event.current_title}</s>`);
-            }
-            if (event.event_date !== date) {
-                changes.push(`<s>${event.event_date}</s>`);
-            }
-            if (event.color_id !== colorId) {
-                changes.push(`<s>Майданчик ${getColorEmoji(event.color_id)}</s>`);
-            }
+            if (event.current_title !== title) changes.push(`<s>${event.current_title}</s>`);
+            if (event.event_date !== date) changes.push(`<s>${event.event_date}</s>`);
+            if (event.color_id !== colorId) changes.push(`<s>Майданчик ${getColorEmoji(event.color_id)}</s>`);
             
             if (changes.length > 0) {
                  let newHistory = [...event.history, { time: new Date().toISOString(), text: changes.join(', ') }];
                  const finalLink = eventLink || event.event_link;
-
                  await client.query(
                      'UPDATE events SET current_title = $1, history = $2::jsonb, color_id = $3, event_date = $4, event_link = $5 WHERE google_event_id = $6',
                      [title, JSON.stringify(newHistory), colorId, date, finalLink, eventId]
                  );
-
                  const updatedText = buildMessage(date, colorId, title, event.creator_email, newHistory, finalLink);
-                 
                  try {
                      await bot.telegram.editMessageText(CHAT_ID, event.message_id, null, updatedText, {
                          parse_mode: 'HTML',
                          disable_web_page_preview: true
                      });
-                 } catch (err) {
-                     console.log(err);
-                 }
-
+                 } catch (err) {}
                  await bot.telegram.sendMessage(CHAT_ID, `Відредаговано`, {
                      reply_parameters: { message_id: event.message_id }
                  });
@@ -124,7 +125,6 @@ app.post('/calendar-webhook', async (req, res) => {
         res.status(200).send('OK');
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error(error);
         res.status(500).send('Error');
     } finally {
         client.release();
@@ -132,9 +132,7 @@ app.post('/calendar-webhook', async (req, res) => {
 });
 
 bot.launch();
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT);
-
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
