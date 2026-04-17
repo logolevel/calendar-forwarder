@@ -77,7 +77,6 @@ app.post('/calendar-webhook', async (req, res) => {
 
         } else {
             const event = dbRes.rows[0];
-            let newHistory = event.history;
             let changes = [];
             
             if (event.current_title !== title) {
@@ -90,10 +89,11 @@ app.post('/calendar-webhook', async (req, res) => {
                 changes.push(`<s>Майданчик ${getColorEmoji(event.color_id)}</s>`);
             }
             
-            if (changes.length > 0) {
-                 newHistory = [...event.history, { time: new Date().toISOString(), text: changes.join(', ') }];
+            if (changes.length === 0) {
+                return res.status(200).send('OK');
             }
             
+            let newHistory = [...event.history, { time: new Date().toISOString(), text: changes.join(', ') }];
             const finalLink = eventLink || event.event_link;
 
             await pool.query(
