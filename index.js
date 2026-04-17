@@ -80,9 +80,29 @@ app.post('/calendar-webhook', async (req, res) => {
 
         if (status === 'deleted') {
             if (eventExists) {
-                 await bot.telegram.sendMessage(CHAT_ID, `Видалено`, {
-                    reply_parameters: { message_id: dbRes.rows[0].message_id }
+                 const event = dbRes.rows[0];
+                 let finalHistory = event.history || [];
+                 finalHistory.push({ time: new Date().toISOString(), text: `<s>${event.current_title}</s>` });
+
+                 let updatedText = `<blockquote><b>Подія була видалена</b>\n\n🕒 Історія редагування:\n\n`;
+                 finalHistory.forEach((h, index) => {
+                     const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+                     updatedText += `${index + 1}. ${h.text} <i>(${timeStr})</i>\n`;
                  });
+                 updatedText += `</blockquote>`;
+
+                 try {
+                     await bot.telegram.editMessageText(CHAT_ID, event.message_id, null, updatedText, {
+                         parse_mode: 'HTML',
+                         disable_web_page_preview: true
+                     });
+                 } catch (err) {}
+
+                 await bot.telegram.sendMessage(CHAT_ID, `Видалено`, {
+                     reply_parameters: { message_id: event.message_id }
+                 });
+
+                 await client.query('DELETE FROM events WHERE google_event_id = $1', [eventId]);
             }
         } else if (!eventExists) {
             const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink);
