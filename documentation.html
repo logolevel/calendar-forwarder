@@ -28,7 +28,7 @@
         h1, h2 { color: #212529; font-weight: 700; margin-bottom: 1rem; }
         h3 { color: #343a40; margin-top: 1.5rem; margin-bottom: 1rem; }
 
-        .zoomable { cursor: zoom-in; max-width: 100%; border: 1px solid #dee2e6; border-radius: 0.375rem; transition: transform 0.2s; }
+        .zoomable { cursor: zoom-in; max-width: 40%; border: 1px solid #dee2e6; border-radius: 0.375rem; transition: transform 0.2s; }
         .zoomable:hover { transform: scale(1.02); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15); }
         
         #lightbox { display: none; position: fixed; z-index: 9999; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; cursor: zoom-out; }
@@ -95,11 +95,14 @@
                     <p>Щоб система розуміла, який календар слухати, вам потрібно знайти його унікальний ідентифікатор (ID).</p>
                     <ol>
                         <li>Відкрийте <a href="https://calendar.google.com" target="_blank">Google Календар</a> на комп'ютері.</li>
-                        <li>На лівій панелі знайдіть потрібний календар, натисніть на три крапки <strong>(⋮)</strong> поруч із ним та виберіть <strong>Налаштування та доступ</strong>.</li>
-                        <li>Прокрутіть сторінку вниз до розділу <strong>Інтеграція календаря</strong>.</li>
-                        <li>Скопіюйте <strong>Ідентифікатор календаря</strong>. Зазвичай він виглядає як email (наприклад: <code>...random_string...@group.calendar.google.com</code>).</li>
+                        <li>На лівій панелі знайдіть потрібний календар, натисніть на три крапки <strong>(⋮)</strong> поруч із ним та виберіть <strong>Налаштування та доступ</strong>.
+                            <div class="mt-2"><img src="/public/images/001-calendar-settings-button.jpg" alt="Налаштування календаря" class="zoomable mb-3"></div>
+                        </li>
+                        <li>Прокрутіть сторінку вниз до розділу <strong>Інтеграція календаря</strong>.
+                            <div class="mt-2"><img src="/public/images/002-calendar-id.jpg" alt="ID календаря" class="zoomable mb-3"></div>
+                        </li>
+                        <li>Скопіюйте <strong>Ідентифікатор календаря</strong>. Зазвичай він виглядає як email (наприклад: <code>...random_string...@group.calendar.google.com</code>). Відправте цей ID також адміністратору телеграм групи, який(а) буде додавати бота.</li>
                     </ol>
-                    <img src="/public/images/test.jpg" alt="ID календаря" class="zoomable mb-3">
                 </section>
 
                 <section id="gcal-script">
@@ -114,20 +117,26 @@
                         <li>Перейдіть на сайт <a href="https://script.google.com/" target="_blank">Google Apps Script</a>.</li>
                         <li>Натисніть кнопку <strong>Новий проєкт</strong>.</li>
                         <li>На лівій навігаційній панелі знайдіть розділ <strong>Служби (Services)</strong> та натисніть на плюсик <strong>(+)</strong> поруч з ним.</li>
-                        <li>У списку знайдіть та оберіть <strong>Google Calendar API</strong>, після чого натисніть <strong>Додати (Add)</strong>.</li>
-                        <li>Тепер у центральному редакторі видаліть весь стандартний код і вставте код, наведений нижче.</li>
-                        <li>У рядку <code>const CALENDAR_IDS = [...]</code> вставте ID вашого календаря (або кількох календарів), який ви скопіювали на попередньому кроці.</li>
+                        <li>У списку знайдіть та оберіть <strong>Google Calendar API</strong>, після чого натисніть <strong>Додати (Add)</strong>.
+                            <div class="mt-2"><img src="/public/images/003-google-calendar-api.jpg" alt="Google Calendar API" class="zoomable mb-3"></div>
+                        </li>
+                        <li>Тепер у центральному редакторі видаліть весь стандартний код і вставте код, наведений нижче.
+                            <div class="mt-2"><img src="/public/images/004-google-apps-script.jpg" alt="Google Apps Script" class="zoomable mb-3"></div>
+                        </li>
+                        <li>У рядку <code>const CALENDAR_IDS = [...]</code> вставте ID вашого календаря (або кількох календарів), який ви скопіювали на попередньому кроці(пункт 1.4).
+                            <div class="mt-2"><img src="/public/images/005-change-calendar-id.jpg" alt="Зміна ID календаря" class="zoomable mb-3"></div>
+                        </li>
                         <li>Натисніть значок дискети (Зберегти) або <code>Ctrl+S</code>.</li>
                     </ol>
 
                     <div class="code-wrapper">
                         <div class="code-container">
                             <div class="code-inner">
-<pre><code class="language-javascript">const WEBHOOK_URL = 'https://calendar-forwarder-production.up.railway.app/calendar-webhook'; 
+<pre><code class="language-javascript">
+const WEBHOOK_URL = 'https://calendar-forwarder-production.up.railway.app/calendar-webhook'; 
 
 const CALENDAR_IDS = [
-  'твій_календар_1@group.calendar.google.com',
-  'твій_календар_2@group.calendar.google.com'
+  'твій_календар_id'
 ]; 
 
 function setupTrigger() {
@@ -147,17 +156,19 @@ function setupTrigger() {
         
       fetchAndSaveSyncToken(calendarId);
     } catch (e) {
-      console.error('Помилка створення тригера: ' + e.message);
+      console.error('Помилка створення тригера для календаря ' + calendarId + ': ' + e.message);
     }
   });
 }
 
 function fetchAndSaveSyncToken(calendarId) {
   try {
-    const calendar = Calendar.Events.list(calendarId, { timeMin: (new Date()).toISOString() });
+    const calendar = Calendar.Events.list(calendarId, {
+      timeMin: (new Date()).toISOString()
+    });
     PropertiesService.getScriptProperties().setProperty('syncToken_' + calendarId, calendar.nextSyncToken);
   } catch (e) {
-    console.error('Помилка: ' + e.message);
+    console.error('Помилка отримання токена для ' + calendarId + ': ' + e.message);
   }
 }
 
@@ -170,8 +181,11 @@ function onCalendarSync(e) {
   const syncToken = properties.getProperty(tokenKey);
   
   let options = { showDeleted: true };
-  if (syncToken) { options.syncToken = syncToken; } 
-  else { options.timeMin = (new Date()).toISOString(); }
+  if (syncToken) {
+    options.syncToken = syncToken;
+  } else {
+    options.timeMin = (new Date()).toISOString();
+  }
   
   const cal = CalendarApp.getCalendarById(currentCalendarId);
   const calendarDefaultHex = cal ? cal.getColor() : '#039be5';
@@ -203,12 +217,15 @@ function onCalendarSync(e) {
       });
     });
     
-    if (events.nextSyncToken) { properties.setProperty(tokenKey, events.nextSyncToken); }
+    if (events.nextSyncToken) {
+      properties.setProperty(tokenKey, events.nextSyncToken);
+    }
   } catch (error) {
     properties.deleteProperty(tokenKey);
     fetchAndSaveSyncToken(currentCalendarId);
   }
-}</code></pre>
+}
+</code></pre>
                             </div>
                         </div>
                     </div>
@@ -220,9 +237,16 @@ function onCalendarSync(e) {
                     <ol>
                         <li>На верхній панелі у випадаючому списку виберіть функцію <strong><code>setupTrigger</code></strong> (замість <code>onCalendarSync</code>).</li>
                         <li>Натисніть кнопку <strong>Виконати (Run)</strong>.</li>
-                        <li>З'явиться вікно «Потрібна авторизація». Натисніть «Переглянути дозволи».</li>
-                        <li>Виберіть свій Google-акаунт. Якщо з'явиться попередження про неперевірений додаток, натисніть <strong>Розширені налаштування (Advanced)</strong> -> <strong>Перейти до проєкту (Go to project)</strong>.</li>
-                        <li>Натисніть <strong>Дозволити (Allow)</strong>.</li>
+                        <li>З'явиться вікно «Потрібна авторизація». Натисніть «Переглянути дозволи».
+                            <div class="mt-2"><img src="/public/images/006-run-code.jpg" alt="Запуск коду" class="zoomable mb-3"></div>
+                        </li>
+                        <li>Виберіть свій Google-акаунт.
+                            <div class="mt-2"><img src="/public/images/007-allow-access.jpg" alt="Дозволи доступу" class="zoomable mb-3"></div>
+                            Якщо з'явиться попередження про неперевірений додаток, натисніть <strong>Розширені налаштування (Advanced)</strong> -> <strong>Перейти до проєкту (Go to project)</strong>.
+                        </li>
+                        <li>Натисніть <strong>Дозволити (Allow)</strong>.
+                            <div class="mt-2"><img src="/public/images/008-success-execution.jpg" alt="Успішне виконання" class="zoomable mb-3"></div>
+                        </li>
                     </ol>
                     <div class="alert alert-success">
                         <strong>✅ Готово!</strong> З боку Google Календаря все налаштовано. Дані вже відправляються на сервер.
