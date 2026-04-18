@@ -110,11 +110,9 @@ bot.command('bind', async (ctx) => {
             [calendarId, ctx.chat.id, ctx.from.id]
         );
         
-        const replyMsg = await ctx.reply(`✅ Календар успішно прив'язано до цієї групи!\nID: ${calendarId}`);
-        setTimeout(() => {
-            ctx.deleteMessage(replyMsg.message_id).catch(() => {});
-            ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-        }, 5000);
+        await ctx.reply(`✅ Календар успішно прив'язано до цієї групи!\nID: ${calendarId}`);
+        ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+        
     } catch (error) {
         ctx.reply('❌ Помилка бази даних при збереженні.');
     }
