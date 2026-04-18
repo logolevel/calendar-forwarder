@@ -20,6 +20,10 @@ async function initDB() {
             event_link TEXT DEFAULT ''
         );
     `);
+
+    await pool.query(`
+        ALTER TABLE events ADD COLUMN IF NOT EXISTS calendar_id VARCHAR(255);
+    `);
     
     await pool.query(`
         CREATE TABLE IF NOT EXISTS subscriptions (
