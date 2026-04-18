@@ -10,16 +10,25 @@ async function initDB() {
         CREATE TABLE IF NOT EXISTS events (
             id SERIAL PRIMARY KEY,
             google_event_id VARCHAR(255) UNIQUE NOT NULL,
+            calendar_id VARCHAR(255),
             message_id INTEGER NOT NULL,
             current_title TEXT NOT NULL,
             event_date TEXT,
             color_id TEXT,
-            history JSONB DEFAULT '[]'::jsonb
+            history JSONB DEFAULT '[]'::jsonb,
+            creator_email TEXT DEFAULT 'невідомо',
+            event_link TEXT DEFAULT ''
         );
     `);
     
-    await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS creator_email TEXT DEFAULT 'невідомо';`);
-    await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS event_link TEXT DEFAULT '';`);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            calendar_id VARCHAR(255) PRIMARY KEY,
+            chat_id BIGINT NOT NULL,
+            added_by BIGINT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `);
 }
 
 module.exports = { pool, initDB };
