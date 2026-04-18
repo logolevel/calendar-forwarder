@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Документація: Налаштування Calendar Bot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { position: relative; padding-top: 60px; }
+        @media (min-width: 992px) { body { padding-top: 0; } }
+        
+        .sidebar-nav { position: sticky; top: 2rem; height: calc(100vh - 4rem); overflow-y: auto; }
+        .nav-pills .nav-link { color: #495057; border-radius: 0.25rem; }
+        .nav-pills .nav-link.active { background-color: #0d6efd; color: white; }
+        
+        section { scroll-margin-top: 5rem; margin-bottom: 4rem; }
+        h1, h2 { color: #212529; font-weight: 700; margin-bottom: 1rem; }
+        h3 { color: #343a40; margin-top: 1.5rem; margin-bottom: 1rem; }
+
+        .zoomable { cursor: zoom-in; max-width: 100%; border: 1px solid #dee2e6; border-radius: 0.375rem; transition: transform 0.2s; }
+        .zoomable:hover { transform: scale(1.02); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15); }
+        
+        #lightbox { display: none; position: fixed; z-index: 9999; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; cursor: zoom-out; }
+        #lightbox img { max-width: 90%; max-height: 90vh; border-radius: 0.5rem; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+
+        .code-wrapper { position: relative; background: #f8f9fa; border-radius: 0.375rem; border: 1px solid #dee2e6; margin-bottom: 1.5rem; }
+        
+        .code-container { display: grid; grid-template-rows: 7.5em; transition: grid-template-rows 0.3s ease-out; }
+        .code-container.expanded { grid-template-rows: 1fr; }
+        
+        .code-inner { min-height: 0; overflow: hidden; }
+        .code-inner pre { margin: 0; padding: 1rem; font-size: 0.875rem; }
+        
+        .code-toggle { width: 100%; background: #e9ecef; border: none; border-top: 1px solid #dee2e6; padding: 0.5rem; font-weight: 600; color: #495057; cursor: pointer; border-radius: 0 0 0.375rem 0.375rem; transition: background 0.2s; }
+        .code-toggle:hover { background: #dee2e6; }
+        .code-toggle::after { content: 'Розгорнути код ↓'; }
+        .code-container.expanded + .code-toggle::after { content: 'Згорнути код ↑'; }
+    </style>
+</head>
+<body data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+
+    <nav class="navbar navbar-light bg-light fixed-top d-lg-none border-bottom px-3">
+        <span class="navbar-brand mb-0 h1">Calendar Bot Документація</span>
+        <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebarOffcanvas">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </nav>
+
+    <div class="container my-4 my-lg-5">
+        <div class="row">
+            <aside class="col-lg-3">
+                <div class="offcanvas-lg offcanvas-start" tabindex="-1" id="sidebarOffcanvas">
+                    <div class="offcanvas-header border-bottom">
+                        <h5 class="offcanvas-title">Зміст</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#sidebarOffcanvas"></button>
+                    </div>
+                    <div class="offcanvas-body p-3 p-lg-0">
+                        <nav id="toc" class="nav nav-pills flex-column sidebar-nav w-100">
+                            <a class="nav-link" href="#intro">Вступ</a>
+                            
+                            <strong class="mt-3 mb-2 px-3 text-muted text-uppercase small">Google Календар</strong>
+                            <a class="nav-link ms-2" href="#gcal-id">1. Отримання ID календаря</a>
+                            <a class="nav-link ms-2" href="#gcal-script">2. Налаштування Apps Script</a>
+                            <a class="nav-link ms-2" href="#gcal-auth">3. Авторизація та Запуск</a>
+                            
+                            <strong class="mt-3 mb-2 px-3 text-muted text-uppercase small">Telegram Бот</strong>
+                            <a class="nav-link ms-2" href="#tg-add">4. Додавання бота в групу</a>
+                            <a class="nav-link ms-2" href="#tg-bind">5. Прив'язка календаря (/bind)</a>
+                        </nav>
+                    </div>
+                </div>
+            </aside>
+
+            <main class="col-lg-9 px-lg-4">
+                <section id="intro">
+                    <h1>Налаштування інтеграції Google Calendar з Telegram</h1>
+                    <p class="lead">Ця документація допоможе адміністраторам швидко налаштувати пересилку подій з Google Календаря у вибрані Telegram-групи.</p>
+                </section>
+
+                <hr>
+
+                <section id="gcal-id">
+                    <h2>1. Отримання ID календаря</h2>
+                    <p>Щоб система розуміла, який календар слухати, вам потрібно знайти його унікальний ідентифікатор (ID).</p>
+                    <ol>
+                        <li>Відкрийте <a href="https://calendar.google.com" target="_blank">Google Календар</a> на комп'ютері.</li>
+                        <li>На лівій панелі знайдіть потрібний календар, натисніть на три крапки <strong>(⋮)</strong> поруч із ним та виберіть <strong>Налаштування та доступ</strong>.</li>
+                        <li>Прокрутіть сторінку вниз до розділу <strong>Інтеграція календаря</strong>.</li>
+                        <li>Скопіюйте <strong>Ідентифікатор календаря</strong>. Зазвичай він виглядає як email (наприклад: <code>...random_string...@group.calendar.google.com</code>).</li>
+                    </ol>
+                    <img src="/public/images/step1-id.jpg" alt="ID календаря" class="zoomable mb-3">
+                </section>
+
+                <section id="gcal-script">
+                    <h2>2. Налаштування Google Apps Script</h2>
+                    <p>Цей скрипт буде автоматично відправляти інформацію на наш сервер кожного разу, коли в календарі створюється, змінюється або видаляється подія.</p>
+                    <ol>
+                        <li>Перейдіть на сайт <a href="https://script.google.com/" target="_blank">Google Apps Script</a>.</li>
+                        <li>Натисніть кнопку <strong>Новий проєкт</strong>.</li>
+                        <li>Видаліть весь стандартний код у редакторі і вставте код, наведений нижче.</li>
+                        <li>У рядку <code>const CALENDAR_IDS = [...]</code> вставте ID вашого календаря (або кількох календарів), який ви скопіювали на попередньому кроці.</li>
+                        <li>Натисніть значок дискети (Зберегти) або <code>Ctrl+S</code>.</li>
+                    </ol>
+
+                    <div class="code-wrapper">
+                        <div class="code-container">
+                            <div class="code-inner">
+<pre><code class="language-javascript">const WEBHOOK_URL = 'https://calendar-forwarder-production.up.railway.app/calendar-webhook'; 
+
+const CALENDAR_IDS = [
+  'твій_календар_1@group.calendar.google.com',
+  'твій_календар_2@group.calendar.google.com'
+]; 
+
+function setupTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < triggers.length; i++) {
+    ScriptApp.deleteTrigger(triggers[i]);
+  }
+  
+  PropertiesService.getScriptProperties().deleteAllProperties();
+  
+  CALENDAR_IDS.forEach(calendarId => {
+    try {
+      ScriptApp.newTrigger('onCalendarSync')
+        .forUserCalendar(calendarId)
+        .onEventUpdated()
+        .create();
+        
+      fetchAndSaveSyncToken(calendarId);
+    } catch (e) {
+      console.error('Помилка створення тригера: ' + e.message);
+    }
+  });
+}
+
+function fetchAndSaveSyncToken(calendarId) {
+  try {
+    const calendar = Calendar.Events.list(calendarId, { timeMin: (new Date()).toISOString() });
+    PropertiesService.getScriptProperties().setProperty('syncToken_' + calendarId, calendar.nextSyncToken);
+  } catch (e) {
+    console.error('Помилка: ' + e.message);
+  }
+}
+
+function onCalendarSync(e) {
+  const currentCalendarId = e.calendarId; 
+  if (!currentCalendarId) return;
+
+  const properties = PropertiesService.getScriptProperties();
+  const tokenKey = 'syncToken_' + currentCalendarId;
+  const syncToken = properties.getProperty(tokenKey);
+  
+  let options = { showDeleted: true };
+  if (syncToken) { options.syncToken = syncToken; } 
+  else { options.timeMin = (new Date()).toISOString(); }
+  
+  const cal = CalendarApp.getCalendarById(currentCalendarId);
+  const calendarDefaultHex = cal ? cal.getColor() : '#039be5';
+  const calendarTimeZone = cal ? cal.getTimeZone() : 'Europe/Kyiv';
+  
+  try {
+    const events = Calendar.Events.list(currentCalendarId, options);
+    events.items.forEach(item => {
+      let status = (item.status === 'cancelled') ? 'deleted' : (item.created === item.updated ? 'created' : 'updated');
+      
+      const payload = {
+        calendarId: currentCalendarId,
+        eventId: item.id,
+        status: status,
+        title: item.summary || 'Без назви',
+        start: item.start,
+        end: item.end,
+        calendarTimeZone: calendarTimeZone,
+        colorId: item.colorId || calendarDefaultHex,
+        creatorEmail: (item.creator && item.creator.email) ? item.creator.email : 'невідомо',
+        eventLink: item.htmlLink || ''
+      };
+      
+      UrlFetchApp.fetch(WEBHOOK_URL, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      });
+    });
+    
+    if (events.nextSyncToken) { properties.setProperty(tokenKey, events.nextSyncToken); }
+  } catch (error) {
+    properties.deleteProperty(tokenKey);
+    fetchAndSaveSyncToken(currentCalendarId);
+  }
+}</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="gcal-auth">
+                    <h2>3. Авторизація та Запуск</h2>
+                    <p>Щоб скрипт запрацював, його потрібно активувати та надати дозволи на читання вашого календаря.</p>
+                    <ol>
+                        <li>На верхній панелі у випадаючому списку виберіть функцію <strong><code>setupTrigger</code></strong> (замість <code>onCalendarSync</code>).</li>
+                        <li>Натисніть кнопку <strong>Виконати (Run)</strong>.</li>
+                        <li>З'явиться вікно «Потрібна авторизація». Натисніть «Переглянути дозволи».</li>
+                        <li>Виберіть свій Google-акаунт. Якщо з'явиться попередження про неперевірений додаток, натисніть <strong>Розширені налаштування (Advanced)</strong> -> <strong>Перейти до проєкту (Go to project)</strong>.</li>
+                        <li>Натисніть <strong>Дозволити (Allow)</strong>.</li>
+                    </ol>
+                    <div class="alert alert-success">
+                        <strong>✅ Готово!</strong> З боку Google Календаря все налаштовано. Дані вже відправляються на сервер.
+                    </div>
+                </section>
+
+                <hr>
+
+                <section id="tg-add">
+                    <h2>4. Додавання бота в групу Telegram</h2>
+                    <p>Щоб отримувати сповіщення, вам потрібно додати нашого бота у цільову групу і надати йому права адміністратора.</p>
+                    <ol>
+                        <li>Відкрийте Telegram групу, куди хочете отримувати сповіщення.</li>
+                        <li>Зайдіть у налаштування групи -> <strong>Адміністратори</strong> -> <strong>Додати адміністратора</strong>.</li>
+                        <li>Знайдіть вашого бота за його username.</li>
+                        <li>Дайте йому базові права на відправку та редагування повідомлень.</li>
+                    </ol>
+                    <img src="/public/images/step4-bot.png" alt="Додавання адміна" class="zoomable">
+                </section>
+
+                <section id="tg-bind">
+                    <h2>5. Прив'язка календаря (/bind)</h2>
+                    <p>Наш сервер вже отримує події, але йому треба вказати, в який саме чат їх відправляти. Для цього використовується команда прив'язки.</p>
+                    <ol>
+                        <li>Прямо у вашій групі в Telegram напишіть команду:
+                            <br><code>/bind ваш_ID_календаря@group.calendar.google.com</code>
+                        </li>
+                        <li>Бот миттєво видалить ваше повідомлення (щоб ніхто в групі не побачив ID календаря) і відповість: <strong>✅ Календар успішно прив'язано до цієї групи!</strong></li>
+                    </ol>
+                    <div class="alert alert-warning">
+                        <strong>Важливо:</strong> Один і той самий календар не може бути прив'язаний до кількох різних груп одночасно. Це зроблено для безпеки. Якщо вам потрібно перенести календар в іншу групу, спочатку відв'яжіть його в старій групі.
+                    </div>
+
+                    <h4 class="mt-4">Додаткові команди (тільки для адміністраторів):</h4>
+                    <table class="table table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Команда</th>
+                                <th>Опис</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>/unbind &lt;calendar_id&gt;</code></td>
+                                <td>Відв'язує конкретний календар від поточної групи.</td>
+                            </tr>
+                            <tr>
+                                <td><code>/unbindall</code></td>
+                                <td>Відв'язує абсолютно всі календарі від поточної групи.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <div id="lightbox" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" alt="Fullscreen Image">
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+
+        document.querySelectorAll('.zoomable').forEach(img => {
+            img.addEventListener('click', function() {
+                lightboxImg.src = this.src;
+                lightbox.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            });
+        });
+
+        function closeLightbox() {
+            lightbox.style.display = 'none';
+            lightboxImg.src = '';
+            document.body.style.overflow = 'auto';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const wrappers = document.querySelectorAll('.code-wrapper');
+            wrappers.forEach(wrapper => {
+                const container = wrapper.querySelector('.code-container');
+                const inner = wrapper.querySelector('.code-inner');
+                
+                if (inner.scrollHeight > container.clientHeight + 5) {
+                    const btn = document.createElement('button');
+                    btn.className = 'code-toggle';
+                    wrapper.appendChild(btn);
+
+                    btn.addEventListener('click', () => {
+                        container.classList.toggle('expanded');
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -3,12 +3,18 @@ const express = require('express');
 const { Telegraf } = require('telegraf');
 const cron = require('node-cron');
 const { pool, initDB } = require('./db');
+const path = require('path');
 
 initDB();
 
 const bot = new Telegraf(process.env.BOT_TOKEN); 
 const app = express();
 app.use(express.json());
+
+app.use('/public', express.static(path.join(__dirname, 'public')));
+app.get('/documentation', (req, res) => {
+    res.sendFile(path.join(__dirname, 'documentation.html'));
+});
 
 cron.schedule('0 3 * * *', async () => {
     try {
