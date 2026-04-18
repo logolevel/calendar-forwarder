@@ -110,7 +110,7 @@ bot.command('bind', async (ctx) => {
             [calendarId, ctx.chat.id, ctx.from.id]
         );
         
-        await ctx.reply(`✅ Календар успішно прив'язано до цієї групи!\nID: ${calendarId}`);
+        await ctx.reply(`✅ Календар успішно прив'язано до цієї групи!`);
         ctx.deleteMessage(ctx.message.message_id).catch(() => {});
         
     } catch (error) {
