@@ -8,9 +8,20 @@
     <style>
         body { position: relative; padding-top: 60px; }
         @media (min-width: 992px) { body { padding-top: 0; } }
+
+        @media (min-width: 992px) {
+            .sidebar-wrapper {
+                position: sticky;
+                top: 2rem;
+                height: calc(100vh - 4rem);
+            }
+            .sidebar-nav {
+                height: 100%;
+                overflow-y: auto;
+            }
+        }
         
-        .sidebar-nav { position: sticky; top: 2rem; height: calc(100vh - 4rem); overflow-y: auto; }
-        .nav-pills .nav-link { color: #495057; border-radius: 0.25rem; }
+        .nav-pills .nav-link { color: #495057; border-radius: 0.25rem; margin-bottom: 0.25rem; }
         .nav-pills .nav-link.active { background-color: #0d6efd; color: white; }
         
         section { scroll-margin-top: 5rem; margin-bottom: 4rem; }
@@ -48,14 +59,14 @@
 
     <div class="container my-4 my-lg-5">
         <div class="row">
-            <aside class="col-lg-3">
-                <div class="offcanvas-lg offcanvas-start" tabindex="-1" id="sidebarOffcanvas">
+            <aside class="col-lg-3 sidebar-wrapper">
+                <div class="offcanvas-lg offcanvas-start h-100" tabindex="-1" id="sidebarOffcanvas">
                     <div class="offcanvas-header border-bottom">
                         <h5 class="offcanvas-title">Зміст</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#sidebarOffcanvas"></button>
                     </div>
-                    <div class="offcanvas-body p-3 p-lg-0">
-                        <nav id="toc" class="nav nav-pills flex-column sidebar-nav w-100">
+                    <div class="offcanvas-body p-3 p-lg-0 h-100">
+                        <nav id="toc" class="nav nav-pills flex-column sidebar-nav w-100 pb-5">
                             <a class="nav-link" href="#intro">Вступ</a>
                             
                             <strong class="mt-3 mb-2 px-3 text-muted text-uppercase small">Google Календар</strong>
@@ -94,10 +105,17 @@
                 <section id="gcal-script">
                     <h2>2. Налаштування Google Apps Script</h2>
                     <p>Цей скрипт буде автоматично відправляти інформацію на наш сервер кожного разу, коли в календарі створюється, змінюється або видаляється подія.</p>
+                    
+                    <div class="alert alert-danger">
+                        <strong>Обов'язковий крок:</strong> Оскільки наш скрипт працює з Advanced Calendar Service, перед написанням коду потрібно активувати Google Calendar API!
+                    </div>
+
                     <ol>
                         <li>Перейдіть на сайт <a href="https://script.google.com/" target="_blank">Google Apps Script</a>.</li>
                         <li>Натисніть кнопку <strong>Новий проєкт</strong>.</li>
-                        <li>Видаліть весь стандартний код у редакторі і вставте код, наведений нижче.</li>
+                        <li>На лівій навігаційній панелі знайдіть розділ <strong>Служби (Services)</strong> та натисніть на плюсик <strong>(+)</strong> поруч з ним.</li>
+                        <li>У списку знайдіть та оберіть <strong>Google Calendar API</strong>, після чого натисніть <strong>Додати (Add)</strong>.</li>
+                        <li>Тепер у центральному редакторі видаліть весь стандартний код і вставте код, наведений нижче.</li>
                         <li>У рядку <code>const CALENDAR_IDS = [...]</code> вставте ID вашого календаря (або кількох календарів), який ви скопіювали на попередньому кроці.</li>
                         <li>Натисніть значок дискети (Зберегти) або <code>Ctrl+S</code>.</li>
                     </ol>
@@ -287,6 +305,18 @@ function onCalendarSync(e) {
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            const offcanvasElement = document.getElementById('sidebarOffcanvas');
+            document.querySelectorAll('#sidebarOffcanvas .nav-link').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (window.innerWidth < 992) {
+                        const bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+                        if (bsOffcanvas) {
+                            bsOffcanvas.hide();
+                        }
+                    }
+                });
+            });
+
             const wrappers = document.querySelectorAll('.code-wrapper');
             wrappers.forEach(wrapper => {
                 const container = wrapper.querySelector('.code-container');
