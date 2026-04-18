@@ -21,8 +21,34 @@
             }
         }
         
-        .nav-pills .nav-link { color: #495057; border-radius: 0.25rem; margin-bottom: 0.25rem; }
-        .nav-pills .nav-link.active { background-color: #0d6efd; color: white; }
+        .nav-pills .nav-link { 
+            color: #495057; 
+            border-radius: 0.25rem; 
+            margin-bottom: 0.25rem; 
+            border: 2px solid transparent;
+        }
+        
+        .nav-pills .nav-link.active { 
+            background-color: #ddc69d !important; 
+            color: #212529 !important; 
+            border: 2px solid #287ec7;
+            position: relative;
+            padding-right: 2.5rem;
+        }
+
+        .nav-pills .nav-link.active::after {
+            content: '';
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            background-image: url('/public/images/ball.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
         
         section { scroll-margin-top: 5rem; margin-bottom: 4rem; }
         h1, h2 { color: #212529; font-weight: 700; margin-bottom: 1rem; }
@@ -40,12 +66,15 @@
         .code-container.expanded { grid-template-rows: 1fr; }
         
         .code-inner { min-height: 0; overflow: hidden; }
-        .code-inner pre { margin: 0; padding: 1rem; font-size: 0.875rem; }
+        .code-inner pre { margin: 0; padding: 1rem; padding-top: 2.5rem; font-size: 0.875rem; }
         
         .code-toggle { width: 100%; background: #e9ecef; border: none; border-top: 1px solid #dee2e6; padding: 0.5rem; font-weight: 600; color: #495057; cursor: pointer; border-radius: 0 0 0.375rem 0.375rem; transition: background 0.2s; }
         .code-toggle:hover { background: #dee2e6; }
         .code-toggle::after { content: 'Розгорнути код ↓'; }
         .code-container.expanded + .code-toggle::after { content: 'Згорнути код ↑'; }
+
+        .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background-color: #ff0d0d; color: white; border: none; border-radius: 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.8rem; font-weight: bold; cursor: pointer; z-index: 10; transition: background-color 0.2s; }
+        .copy-btn:hover { background-color: #cc0000; }
     </style>
 </head>
 <body data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
@@ -123,17 +152,18 @@
                         <li>Тепер у центральному редакторі видаліть весь стандартний код і вставте код, наведений нижче.
                             <div class="mt-2"><img src="/public/images/004-google-apps-script.jpg" alt="Google Apps Script" class="zoomable mb-3"></div>
                         </li>
-                        <li>У рядку <code>const CALENDAR_IDS = [...]</code> вставте ID вашого календаря (або кількох календарів), який ви скопіювали на попередньому кроці(пункт 1.4).
+                        <li>У рядку <code>const CALENDAR_IDS = [...]</code> вставте ID вашого календаря (або кількох календарів), який ви скопіювали на попередньому кроці(<a href="#gcal-id">пункт 1.4</a>).
                             <div class="mt-2"><img src="/public/images/005-change-calendar-id.jpg" alt="Зміна ID календаря" class="zoomable mb-3"></div>
                         </li>
                         <li>Натисніть значок дискети (Зберегти) або <code>Ctrl+S</code>.</li>
                     </ol>
                     <p>Код, який потрібно вставити на 5 кроці:</p>
+                    
                     <div class="code-wrapper">
+                        <button class="copy-btn">скопіювати код</button>
                         <div class="code-container">
                             <div class="code-inner">
-<pre><code class="language-javascript">
-const WEBHOOK_URL = 'https://calendar-forwarder-production.up.railway.app/calendar-webhook'; 
+<pre><code class="language-javascript">const WEBHOOK_URL = 'https://calendar-forwarder-production.up.railway.app/calendar-webhook'; 
 
 const CALENDAR_IDS = [
   'твій_календар_id'
@@ -224,8 +254,7 @@ function onCalendarSync(e) {
     properties.deleteProperty(tokenKey);
     fetchAndSaveSyncToken(currentCalendarId);
   }
-}
-</code></pre>
+}</code></pre>
                             </div>
                         </div>
                     </div>
@@ -285,7 +314,7 @@ function onCalendarSync(e) {
                     <ol>
                         <li>Прямо у вашій групі в Telegram напишіть повідомлення з текстом:
                             <br><code>/bind ваш_ID_календаря@group.calendar.google.com</code>
-                            <p>ID календаря можна знайти в налаштуваннях Google Календаря(пункт 1)</p>
+                            <p>ID календаря можна знайти в налаштуваннях Google Календаря(<a href="#gcal-id">пункт 1</a>)</p>
                             <div class="mt-2">
                                 <img src="/public/images/014-bind-calendar.jpg" alt="Прив'язка календаря" class="zoomable mb-3">
                                 <img src="/public/images/015-success-bind.jpg" alt="Успішна прив'язка календаря" class="zoomable mb-3">
@@ -376,6 +405,22 @@ function onCalendarSync(e) {
                         container.classList.toggle('expanded');
                     });
                 }
+            });
+
+            document.querySelectorAll('.copy-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const code = btn.closest('.code-wrapper').querySelector('code').innerText;
+                    navigator.clipboard.writeText(code).then(() => {
+                        const originalText = btn.innerText;
+                        const originalBg = btn.style.backgroundColor;
+                        btn.innerText = 'Скопійовано!';
+                        btn.style.backgroundColor = '#198754';
+                        setTimeout(() => {
+                            btn.innerText = originalText;
+                            btn.style.backgroundColor = originalBg;
+                        }, 2000);
+                    });
+                });
             });
         });
     </script>
