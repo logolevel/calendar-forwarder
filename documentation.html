@@ -101,7 +101,7 @@
                         <li>Прокрутіть сторінку вниз до розділу <strong>Інтеграція календаря</strong>.
                             <div class="mt-2"><img src="/public/images/002-calendar-id.jpg" alt="ID календаря" class="zoomable mb-3"></div>
                         </li>
-                        <li>Скопіюйте <strong>Ідентифікатор календаря</strong>. Зазвичай він виглядає як email (наприклад: <code>...random_string...@group.calendar.google.com</code>). Відправте цей ID також адміністратору телеграм групи, який(а) буде додавати бота.</li>
+                        <li>Скопіюйте та збережіть собі <strong>Ідентифікатор календаря</strong>. Зазвичай він виглядає як email (наприклад: <code>...random_string...@group.calendar.google.com</code>).</li>
                     </ol>
                 </section>
 
@@ -128,7 +128,7 @@
                         </li>
                         <li>Натисніть значок дискети (Зберегти) або <code>Ctrl+S</code>.</li>
                     </ol>
-
+                    <p>Код, який потрібно вставити на 5 кроці:</p>
                     <div class="code-wrapper">
                         <div class="code-container">
                             <div class="code-inner">
@@ -260,21 +260,42 @@ function onCalendarSync(e) {
                     <p>Щоб отримувати сповіщення, вам потрібно додати нашого бота у цільову групу і надати йому права адміністратора.</p>
                     <ol>
                         <li>Відкрийте Telegram групу, куди хочете отримувати сповіщення.</li>
-                        <li>Зайдіть у налаштування групи -> <strong>Адміністратори</strong> -> <strong>Додати адміністратора</strong>.</li>
-                        <li>Знайдіть вашого бота за його username.</li>
-                        <li>Дайте йому базові права на відправку та редагування повідомлень.</li>
+                        <li>Зайдіть у налаштування групи -> <strong>Додати учасника</strong>.</li>
+                        <li>Знайдіть бота за його username: <code>@CalendarForwarderBot</code>
+                            <div class="mt-2"><img src="/public/images/009-add-bot.jpg" alt="Додавання бота" class="zoomable mb-3"></div>
+                        </li>
+                        <li>Зайдіть у <strong>Редагування</strong> -> <strong>Адміністратори</strong> та додати Адміністратора.
+                            <div class="mt-2">
+                                <img src="/public/images/010-admins.jpg" alt="Адміністратори" class="zoomable mb-3">
+                                <img src="/public/images/011-add-admin.jpg" alt="Додавання адміністратора" class="zoomable mb-3">
+                            </div>
+                        </li>
+                        <li>Дайте йому права на відправку та редагування повідомлень
+                            <div class="mt-2">
+                                <img src="/public/images/012-confirm-adding.jpg" alt="Підтвердження додавання адміністратора" class="zoomable mb-3">
+                                <img src="/public/images/013-add-credentials.jpg" alt="Додавання облікових даних" class="zoomable mb-3">
+                            </div>
+                        </li>
                     </ol>
-                    <img src="/public/images/step4-bot.png" alt="Додавання адміна" class="zoomable">
                 </section>
 
                 <section id="tg-bind">
                     <h2>5. Прив'язка календаря (/bind)</h2>
                     <p>Наш сервер вже отримує події, але йому треба вказати, в який саме чат їх відправляти. Для цього використовується команда прив'язки.</p>
                     <ol>
-                        <li>Прямо у вашій групі в Telegram напишіть команду:
+                        <li>Прямо у вашій групі в Telegram напишіть повідомлення з текстом:
                             <br><code>/bind ваш_ID_календаря@group.calendar.google.com</code>
+                            <p>ID календаря можна знайти в налаштуваннях Google Календаря(пункт 1)</p>
+                            <div class="mt-2">
+                                <img src="/public/images/014-bind-calendar.jpg" alt="Прив'язка календаря" class="zoomable mb-3">
+                                <img src="/public/images/015-success-bind.jpg" alt="Успішна прив'язка календаря" class="zoomable mb-3">
+                            </div>
                         </li>
-                        <li>Бот миттєво видалить ваше повідомлення (щоб ніхто в групі не побачив ID календаря) і відповість: <strong>✅ Календар успішно прив'язано до цієї групи!</strong></li>
+                        <li>Бот миттєво видалить ваше повідомлення (щоб ніхто в групі не побачив ID календаря) і відповість: <strong>✅ Календар успішно прив'язано до цієї групи!</strong>
+                        <p><strong>Це все! Налаштування завершено!</strong> Додайте подію у ваш календар, і вона автоматично з'явиться в групі.
+                            <div class="mt-2"><img src="/public/images/016-test-message.jpg" alt="Тестове повідомлення" class="zoomable mb-3"></div>
+                        </p>
+                        </li>
                     </ol>
                     <div class="alert alert-warning">
                         <strong>Важливо:</strong> Один і той самий календар не може бути прив'язаний до кількох різних груп одночасно. Це зроблено для безпеки. Якщо вам потрібно перенести календар в іншу групу, спочатку відв'яжіть його в старій групі.
