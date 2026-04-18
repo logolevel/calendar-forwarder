@@ -66,10 +66,21 @@ bot.command('bind', async (ctx) => {
     }
     const args = ctx.message.text.split(' ');
     const calendarId = args[1];
-    
+
     if (!calendarId) {
         await ctx.reply('⚠️ Формат команди: /bind <calendar_id>\nНаприклад: /bind test@group.calendar.google.com');
         ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+        return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(calendarId)) {
+        const replyMsg = await ctx.reply('⚠️ Некоректний формат ID календаря. Він має виглядати як email (наприклад: ...@group.calendar.google.com)');
+        ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+
+        setTimeout(() => {
+            ctx.deleteMessage(replyMsg.message_id).catch(() => {});
+        }, 7000);
         return;
     }
     
