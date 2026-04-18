@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { Telegraf } = require('telegraf');
+const cron = require('node-cron');
 const { pool, initDB } = require('./db');
 
 initDB();
@@ -8,6 +9,12 @@ initDB();
 const bot = new Telegraf(process.env.BOT_TOKEN); 
 const app = express();
 app.use(express.json());
+
+cron.schedule('0 3 * * *', async () => {
+    try {
+        await pool.query(`DELETE FROM events WHERE event_end_time < NOW() - INTERVAL '7 days'`);
+    } catch (error) {}
+});
 
 async function isAdmin(ctx) {
     if (ctx.chat.type === 'private') return false;
@@ -21,12 +28,10 @@ async function isAdmin(ctx) {
 
 bot.command('stats', async (ctx) => {
     const ADMIN_ID = parseInt(process.env.ADMIN_ID, 10);
-    
     if (ctx.from.id !== ADMIN_ID) return;
 
     try {
         const res = await pool.query('SELECT calendar_id, chat_id, created_at FROM subscriptions');
-        
         if (res.rows.length === 0) {
             return ctx.reply('📊 Бот поки не прив\'язаний до жодної групи.');
         }
@@ -36,21 +41,18 @@ bot.command('stats', async (ctx) => {
         for (let i = 0; i < res.rows.length; i++) {
             const row = res.rows[i];
             let chatTitle = 'Невідома назва';
-            
             try {
                 const chat = await ctx.telegram.getChat(row.chat_id);
                 chatTitle = chat.title || 'Приватний чат';
             } catch (e) {
                 chatTitle = 'Група недоступна (бота видалено?)';
             }
-            
             const date = new Date(row.created_at).toLocaleDateString('uk-UA');
             text += `${i + 1}. <b>${chatTitle}</b>\n`;
             text += `Календар: <code>${row.calendar_id}</code>\n`;
             text += `Chat ID: <code>${row.chat_id}</code>\n`;
             text += `Додано: ${date}\n\n`;
         }
-
         ctx.reply(text, { parse_mode: 'HTML' });
     } catch (error) {
         ctx.reply('❌ Помилка при отриманні статистики.');
@@ -61,12 +63,11 @@ bot.command('bind', async (ctx) => {
     if (ctx.chat.type === 'private') {
         return ctx.reply('❌ Цю команду потрібно використовувати безпосередньо в групі.');
     }
-    if (!(await isAdmin(ctx))) {
-        return;
-    }
+    if (!(await isAdmin(ctx))) return;
+    
     const args = ctx.message.text.split(' ');
     const calendarId = args[1];
-
+    
     if (!calendarId) {
         await ctx.reply('⚠️ Формат команди: /bind <calendar_id>\nНаприклад: /bind test@group.calendar.google.com');
         ctx.deleteMessage(ctx.message.message_id).catch(() => {});
@@ -75,46 +76,35 @@ bot.command('bind', async (ctx) => {
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(calendarId)) {
-        const replyMsg = await ctx.reply('⚠️ Некоректний формат ID календаря. Він має виглядати як email (наприклад: ...@group.calendar.google.com)');
+        await ctx.reply('⚠️ Некоректний формат ID календаря. Він має виглядати як email (наприклад: ...@group.calendar.google.com)');
         ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-
-        setTimeout(() => {
-            ctx.deleteMessage(replyMsg.message_id).catch(() => {});
-        }, 7000);
         return;
     }
     
     try {
         const checkRes = await pool.query('SELECT chat_id FROM subscriptions WHERE calendar_id = $1', [calendarId]);
-        
         if (checkRes.rows.length > 0) {
             const existingChatId = checkRes.rows[0].chat_id;
-            
             if (existingChatId === ctx.chat.id) {
                 await ctx.reply(`⚠️ Цей календар вже прив'язаний до поточної групи.`);
                 ctx.deleteMessage(ctx.message.message_id).catch(() => {});
                 return;
             }
-            
             try {
                 await ctx.telegram.getChat(existingChatId);
                 await ctx.reply(`⛔️ Помилка: Цей календар вже використовується в іншій активній групі. Спочатку відв'яжіть його там.`);
                 ctx.deleteMessage(ctx.message.message_id).catch(() => {});
                 return;
-            } catch (e) {
-            }
+            } catch (e) {}
         }
 
         await pool.query(
-            `INSERT INTO subscriptions (calendar_id, chat_id, added_by) 
-             VALUES ($1, $2, $3) 
-             ON CONFLICT (calendar_id) DO UPDATE SET chat_id = $2`,
+            `INSERT INTO subscriptions (calendar_id, chat_id, added_by) VALUES ($1, $2, $3) ON CONFLICT (calendar_id) DO UPDATE SET chat_id = $2`,
             [calendarId, ctx.chat.id, ctx.from.id]
         );
         
         await ctx.reply(`✅ Календар успішно прив'язано до цієї групи!`);
         ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-        
     } catch (error) {
         ctx.reply('❌ Помилка бази даних при збереженні.');
     }
@@ -184,6 +174,13 @@ function formatEventDate(start, end, timeZone) {
     return 'Дата не вказана';
 }
 
+function parseEndTime(end) {
+    if (!end) return null;
+    if (end.dateTime) return end.dateTime;
+    if (end.date) return `${end.date}T23:59:59Z`;
+    return null;
+}
+
 function getColorEmoji(colorValue) {
     const colorMap = {
         '1': '🔵', '2': '🟢', '3': '🟣', '4': '🔴', '5': '🟡', '6': '🟠', '7': '🔵', '8': '🔘', '9': '🔵', '10': '🟢', '11': '🔴',
@@ -216,6 +213,7 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
 app.post('/calendar-webhook', async (req, res) => {
     const { calendarId, eventId, status, title, start, end, calendarTimeZone, colorId = '0', creatorEmail = 'невідомо', eventLink = '' } = req.body;
     if (!calendarId) return res.status(400).send('Missing calendarId');
+    
     const client = await pool.connect();
     try {
         const subRes = await client.query('SELECT chat_id FROM subscriptions WHERE calendar_id = $1', [calendarId]);
@@ -223,11 +221,15 @@ app.post('/calendar-webhook', async (req, res) => {
             client.release();
             return res.status(200).send('Calendar not bound');
         }
+        
         const TARGET_CHAT_ID = subRes.rows[0].chat_id;
         const date = formatEventDate(start, end, calendarTimeZone);
+        const endTime = parseEndTime(end);
+        
         await client.query('BEGIN');
         const dbRes = await client.query('SELECT * FROM events WHERE google_event_id = $1 AND calendar_id = $2 FOR UPDATE', [eventId, calendarId]);
         const eventExists = dbRes.rows.length > 0;
+        
         if (status === 'deleted') {
             if (eventExists) {
                  const event = dbRes.rows[0];
@@ -250,9 +252,9 @@ app.post('/calendar-webhook', async (req, res) => {
             const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink);
             const sentMessage = await bot.telegram.sendMessage(TARGET_CHAT_ID, text, { parse_mode: 'HTML', disable_web_page_preview: true });
             await client.query(
-                `INSERT INTO events (google_event_id, calendar_id, message_id, current_title, event_date, color_id, creator_email, event_link) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [eventId, calendarId, sentMessage.message_id, title, date, colorId, creatorEmail, eventLink]
+                `INSERT INTO events (google_event_id, calendar_id, message_id, current_title, event_date, color_id, creator_email, event_link, event_end_time) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [eventId, calendarId, sentMessage.message_id, title, date, colorId, creatorEmail, eventLink, endTime]
             );
         } else {
             const event = dbRes.rows[0];
@@ -264,8 +266,8 @@ app.post('/calendar-webhook', async (req, res) => {
                  let newHistory = [...event.history, { time: new Date().toISOString(), text: changes.join(', ') }];
                  const finalLink = eventLink || event.event_link;
                  await client.query(
-                     'UPDATE events SET current_title = $1, history = $2::jsonb, color_id = $3, event_date = $4, event_link = $5 WHERE id = $6',
-                     [title, JSON.stringify(newHistory), colorId, date, finalLink, event.id]
+                     'UPDATE events SET current_title = $1, history = $2::jsonb, color_id = $3, event_date = $4, event_link = $5, event_end_time = $6 WHERE id = $7',
+                     [title, JSON.stringify(newHistory), colorId, date, finalLink, endTime, event.id]
                  );
                  const updatedText = buildMessage(date, colorId, title, event.creator_email, newHistory, finalLink);
                  try {
