@@ -66,6 +66,7 @@ bot.command('bind', async (ctx) => {
     }
     const args = ctx.message.text.split(' ');
     const calendarId = args[1];
+    
     if (!calendarId) {
         const msg = await ctx.reply('⚠️ Формат команди: /bind <calendar_id>\nНаприклад: /bind test@group.calendar.google.com');
         setTimeout(() => {
@@ -74,13 +75,41 @@ bot.command('bind', async (ctx) => {
         }, 10000);
         return;
     }
+    
     try {
+        const checkRes = await pool.query('SELECT chat_id FROM subscriptions WHERE calendar_id = $1', [calendarId]);
+        
+        if (checkRes.rows.length > 0) {
+            const existingChatId = checkRes.rows[0].chat_id;
+            
+            if (existingChatId === ctx.chat.id) {
+                const replyMsg = await ctx.reply(`⚠️ Цей календар вже прив'язаний до поточної групи.`);
+                setTimeout(() => {
+                    ctx.deleteMessage(replyMsg.message_id).catch(() => {});
+                    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+                }, 5000);
+                return;
+            }
+            
+            try {
+                await ctx.telegram.getChat(existingChatId);
+                const replyMsg = await ctx.reply(`⛔️ Помилка: Цей календар вже використовується в іншій активній групі. Спочатку відв'яжіть його там.`);
+                setTimeout(() => {
+                    ctx.deleteMessage(replyMsg.message_id).catch(() => {});
+                    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+                }, 7000);
+                return;
+            } catch (e) {
+            }
+        }
+
         await pool.query(
             `INSERT INTO subscriptions (calendar_id, chat_id, added_by) 
              VALUES ($1, $2, $3) 
              ON CONFLICT (calendar_id) DO UPDATE SET chat_id = $2`,
             [calendarId, ctx.chat.id, ctx.from.id]
         );
+        
         const replyMsg = await ctx.reply(`✅ Календар успішно прив'язано до цієї групи!\nID: ${calendarId}`);
         setTimeout(() => {
             ctx.deleteMessage(replyMsg.message_id).catch(() => {});
