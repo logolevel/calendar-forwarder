@@ -68,11 +68,8 @@ bot.command('bind', async (ctx) => {
     const calendarId = args[1];
     
     if (!calendarId) {
-        const msg = await ctx.reply('⚠️ Формат команди: /bind <calendar_id>\nНаприклад: /bind test@group.calendar.google.com');
-        setTimeout(() => {
-            ctx.deleteMessage(msg.message_id).catch(() => {});
-            ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-        }, 10000);
+        await ctx.reply('⚠️ Формат команди: /bind <calendar_id>\nНаприклад: /bind test@group.calendar.google.com');
+        ctx.deleteMessage(ctx.message.message_id).catch(() => {});
         return;
     }
     
@@ -83,21 +80,15 @@ bot.command('bind', async (ctx) => {
             const existingChatId = checkRes.rows[0].chat_id;
             
             if (existingChatId === ctx.chat.id) {
-                const replyMsg = await ctx.reply(`⚠️ Цей календар вже прив'язаний до поточної групи.`);
-                setTimeout(() => {
-                    ctx.deleteMessage(replyMsg.message_id).catch(() => {});
-                    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-                }, 5000);
+                await ctx.reply(`⚠️ Цей календар вже прив'язаний до поточної групи.`);
+                ctx.deleteMessage(ctx.message.message_id).catch(() => {});
                 return;
             }
             
             try {
                 await ctx.telegram.getChat(existingChatId);
-                const replyMsg = await ctx.reply(`⛔️ Помилка: Цей календар вже використовується в іншій активній групі. Спочатку відв'яжіть його там.`);
-                setTimeout(() => {
-                    ctx.deleteMessage(replyMsg.message_id).catch(() => {});
-                    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-                }, 7000);
+                await ctx.reply(`⛔️ Помилка: Цей календар вже використовується в іншій активній групі. Спочатку відв'яжіть його там.`);
+                ctx.deleteMessage(ctx.message.message_id).catch(() => {});
                 return;
             } catch (e) {
             }
@@ -128,26 +119,17 @@ bot.command('unbind', async (ctx) => {
     const calendarId = args[1];
 
     if (!calendarId) {
-        const msg = await ctx.reply('⚠️ Формат команди: /unbind <calendar_id>\nНаприклад: /unbind test@group.calendar.google.com');
-        setTimeout(() => {
-            ctx.deleteMessage(msg.message_id).catch(() => {});
-            ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-        }, 10000);
+        await ctx.reply('⚠️ Формат команди: /unbind <calendar_id>\nНаприклад: /unbind test@group.calendar.google.com');
+        ctx.deleteMessage(ctx.message.message_id).catch(() => {});
         return;
     }
 
     try {
         const res = await pool.query('DELETE FROM subscriptions WHERE chat_id = $1 AND calendar_id = $2', [ctx.chat.id, calendarId]);
         if (res.rowCount > 0) {
-            const replyMsg = await ctx.reply(`✅ Календар ${calendarId} відв'язано від цієї групи.`);
-            setTimeout(() => {
-                ctx.deleteMessage(replyMsg.message_id).catch(() => {});
-            }, 5000);
+            await ctx.reply(`✅ Календар відв'язано від цієї групи.`);
         } else {
-            const replyMsg = await ctx.reply(`⚠️ Календар ${calendarId} не був прив'язаний до цієї групи.`);
-            setTimeout(() => {
-                ctx.deleteMessage(replyMsg.message_id).catch(() => {});
-            }, 5000);
+            await ctx.reply(`⚠️ Цей календар не був прив'язаний до цієї групи.`);
         }
         ctx.deleteMessage(ctx.message.message_id).catch(() => {});
     } catch (error) {
@@ -163,10 +145,7 @@ bot.command('unbindall', async (ctx) => {
 
     try {
         const res = await pool.query('DELETE FROM subscriptions WHERE chat_id = $1', [ctx.chat.id]);
-        const replyMsg = await ctx.reply(`✅ Відв'язано календарів: ${res.rowCount}. Всі календарі відв'язано від цієї групи.`);
-        setTimeout(() => {
-            ctx.deleteMessage(replyMsg.message_id).catch(() => {});
-        }, 5000);
+        await ctx.reply(`✅ Відв'язано календарів: ${res.rowCount}. Всі календарі відв'язано від цієї групи.`);
         ctx.deleteMessage(ctx.message.message_id).catch(() => {});
     } catch (error) {
         ctx.reply('❌ Помилка бази даних.');
