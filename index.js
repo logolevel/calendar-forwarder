@@ -41,7 +41,7 @@ bot.command('send_welcome', async (ctx) => {
 
 • 🔗 <b>Все під рукою:</b> У повідомленні завжди є посилання на подію в Google Календар.`;
 
-    const TARGET_CHAT_ID = '-1003991774520';
+    const TARGET_CHAT_ID = '-1003487485236';
 
     try {
         await bot.telegram.sendMessage(TARGET_CHAT_ID, welcomeText, { parse_mode: 'HTML' });
