@@ -16,43 +16,6 @@ app.get('/documentation', (req, res) => {
     res.sendFile(path.join(__dirname, 'documentation.html'));
 });
 
-// ========================================================================================
-// command for manual welcome message sending (Only for allowed IDs)
-// ========================================================================================
-bot.command('send_welcome', async (ctx) => {
-    const ADMIN_ID = parseInt(process.env.ADMIN_ID, 10);
-    const ALLOWED_IDS = [ADMIN_ID, 579500550]; 
-
-    if (!ALLOWED_IDS.includes(ctx.from.id)) {
-        return;
-    }
-
-    const welcomeText = `Привіт, спільното! 🏐 Тепер я стежу за розкладом, щоб у вас було менше зайвої роботи.
-
-<b>Що важливо знати:</b>
-
-• 📸 <b>Скріншоти більше не потрібні:</b> Для всіх <b>нових</b> тренувань я сам кидатиму інфу. Але для тих подій, що вже були в календарі до моєї появи, поки що скидайте скріни самі.
-
-• 🚀 <b>Нові тренування:</b> Щойно тренування буде додано в Google Календар — воно миттєво з'явиться тут.
-
-• 🔄 <b>Авто-оновлення:</b> Якщо час, майданчик чи склад учасників події змінилися, я <b>сам виправлю</b> повідомлення в чаті. Актуальна інфа завжди в останньому пості.
-
-• ❌ <b>Скасування:</b> якщо тренування видалять з календаря — я одразу попереджу.
-
-• 🔗 <b>Все під рукою:</b> У повідомленні завжди є посилання на подію в Google Календар.`;
-
-    const TARGET_CHAT_ID = '-1003487485236';
-
-    try {
-        await bot.telegram.sendMessage(TARGET_CHAT_ID, welcomeText, { parse_mode: 'HTML' });
-    } catch (err) {
-        console.error('Помилка при розсилці:', err);
-    }
-});
-// ========================================================================================
-// command for manual welcome message sending (Only for allowed IDs)
-// ========================================================================================
-
 cron.schedule('0 3 * * *', async () => {
     try {
         await pool.query(`DELETE FROM events WHERE event_end_time < NOW() - INTERVAL '7 days'`);
