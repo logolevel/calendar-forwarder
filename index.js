@@ -17,7 +17,7 @@ app.get('/documentation', (req, res) => {
 });
 
 // ========================================================================================
-// Команда для ручної розсилки привітального повідомлення (Тільки для дозволених ID)
+// command for manual welcome message sending (Only for allowed IDs)
 // ========================================================================================
 bot.command('send_welcome', async (ctx) => {
     const ADMIN_ID = parseInt(process.env.ADMIN_ID, 10);
@@ -41,27 +41,18 @@ bot.command('send_welcome', async (ctx) => {
 
 • 🔗 <b>Все під рукою:</b> У повідомленні завжди є посилання на подію в Google Календар.`;
 
+    const TARGET_CHAT_ID = '-1003991774520';
+
     try {
-        const result = await pool.query('SELECT DISTINCT chat_id FROM subscriptions');
-        let count = 0;
-        
-        for (const row of result.rows) {
-            try {
-                await bot.telegram.sendMessage(row.chat_id, welcomeText, { parse_mode: 'HTML' });
-                count++;
-            } catch (e) {
-                console.error(`Не вдалося надіслати в чат ${row.chat_id}:`, e.message);
-            }
-        }
-        
-        await ctx.reply(`✅ Розсилка успішно завершена! Повідомлення надіслано у ${count} груп(и).`);
+        await bot.telegram.sendMessage(TARGET_CHAT_ID, welcomeText, { parse_mode: 'HTML' });
+        await ctx.reply(`✅ Повідомлення успішно надіслано в цільову групу!`);
     } catch (err) {
         console.error('Помилка при розсилці:', err);
-        await ctx.reply('❌ Сталася помилка бази даних при розсилці.');
+        await ctx.reply(`❌ Сталася помилка при відправці повідомлення: ${err.message}`);
     }
 });
 // ========================================================================================
-// Команда для ручної розсилки привітального повідомлення (Тільки для дозволених ID)
+// command for manual welcome message sending (Only for allowed IDs)
 // ========================================================================================
 
 cron.schedule('0 3 * * *', async () => {
