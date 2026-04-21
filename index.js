@@ -45,10 +45,8 @@ bot.command('send_welcome', async (ctx) => {
 
     try {
         await bot.telegram.sendMessage(TARGET_CHAT_ID, welcomeText, { parse_mode: 'HTML' });
-        await ctx.reply(`✅ Повідомлення успішно надіслано в цільову групу!`);
     } catch (err) {
         console.error('Помилка при розсилці:', err);
-        await ctx.reply(`❌ Сталася помилка при відправці повідомлення: ${err.message}`);
     }
 });
 // ========================================================================================
