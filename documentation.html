@@ -158,8 +158,8 @@
                         <li>Натисніть значок дискети (Зберегти) або <code>Ctrl+S</code>.</li>
                     </ol>
                     <p>Код, який потрібно вставити на 5 кроці:</p>
-                    <!--<p>Обов'язково замініть значення змінної <code>твій_календар_id</code> на ID вашого календаря.</p>
-                    <p>Лапки навколо <code>'твій_календар_id'</code> обов'язкові у коді. У скопійованому ID календаря з Google Календаря, їх не буде</p>-->
+                    <p>Обов'язково замініть значення змінної <code>твій_календар_id</code> на ID вашого календаря.</p>
+                    <p>Лапки навколо <code>'твій_календар_id'</code> обов'язкові у коді. У скопійованому ID календаря з Google Календаря, їх не буде</p>
                     
                     <div class="code-wrapper">
                         <button class="copy-btn">скопіювати код</button>
@@ -168,7 +168,7 @@
 <pre><code class="language-javascript">const WEBHOOK_URL = 'https://calendar-forwarder-production.up.railway.app/calendar-webhook'; 
 
 const CALENDAR_IDS = [
-  'b92fub1u6r4em0h53qda95cp6k@group.calendar.google.com'
+  'твій_календар_id'
 ]; 
 
 function setupTrigger() {
@@ -322,8 +322,7 @@ function onCalendarSync(e) {
                     <p>Наш сервер вже отримує події, але йому треба вказати, в який саме чат їх відправляти. Для цього використовується команда прив'язки.</p>
                     <ol>
                         <li>У вашій групі в Telegram напишіть повідомлення з текстом, який починається з команди <code>/bind</code>, після якої через пробіл вкажіть ID календаря, який ви отримали раніше(<a href="#gcal-id">пункт 1.4</a>).:
-                            <!--<br><code>/bind ваш_ID_календаря@group.calendar.google.com</code>-->
-                            <br><code>/bind b92fub1u6r4em0h53qda95cp6k@group.calendar.google.com</code>
+                            <br><code>/bind ваш_ID_календаря@group.calendar.google.com</code>
                             <div class="mt-2">
                                 <img src="/public/images/014-bind-calendar.jpg" alt="Прив'язка календаря" class="zoomable mb-3">
                                 <img src="/public/images/015-success-bind.jpg" alt="Успішна прив'язка календаря" class="zoomable mb-3">
