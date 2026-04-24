@@ -99,8 +99,10 @@ bot.command('bind', async (ctx) => {
 
             const strExistingThread = existingThreadId ? String(existingThreadId) : null;
             const strCurrentThread = threadId ? String(threadId) : null;
+            const strExistingChat = String(existingChatId);
+            const strCurrentChat = String(ctx.chat.id);
 
-            if (existingChatId === ctx.chat.id) {
+            if (strExistingChat === strCurrentChat) {
                 if (strExistingThread === strCurrentThread) {
                     await ctx.reply(`⚠️ Цей календар вже прив'язаний до поточної групи/теми.`);
                     ctx.deleteMessage(ctx.message.message_id).catch(() => {});
