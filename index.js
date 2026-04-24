@@ -37,7 +37,7 @@ bot.command('stats', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
 
     try {
-        const res = await pool.query('SELECT calendar_id, chat_id, created_at FROM subscriptions');
+        const res = await pool.query('SELECT calendar_id, chat_id, thread_id, created_at FROM subscriptions');
         if (res.rows.length === 0) {
             return ctx.reply('📊 Бот поки не прив\'язаний до жодної групи.');
         }
@@ -54,9 +54,11 @@ bot.command('stats', async (ctx) => {
                 chatTitle = 'Група недоступна (бота видалено?)';
             }
             const date = new Date(row.created_at).toLocaleDateString('uk-UA');
+            const threadInfo = row.thread_id ? ` (в окремій темі)` : '';
+            
             text += `${i + 1}. <b>${chatTitle}</b>\n`;
             text += `Календар: <code>${row.calendar_id}</code>\n`;
-            text += `Chat ID: <code>${row.chat_id}</code>\n`;
+            text += `Chat ID: <code>${row.chat_id}</code>${threadInfo}\n`;
             text += `Додано: ${date}\n\n`;
         }
         ctx.reply(text, { parse_mode: 'HTML' });
@@ -73,6 +75,8 @@ bot.command('bind', async (ctx) => {
     
     const args = ctx.message.text.split(' ');
     const calendarId = args[1];
+
+    const threadId = ctx.message.message_thread_id || null;
     
     if (!calendarId) {
         await ctx.reply('⚠️ Формат команди: /bind <calendar_id>\nНаприклад: /bind test@group.calendar.google.com');
@@ -88,28 +92,39 @@ bot.command('bind', async (ctx) => {
     }
     
     try {
-        const checkRes = await pool.query('SELECT chat_id FROM subscriptions WHERE calendar_id = $1', [calendarId]);
+        const checkRes = await pool.query('SELECT chat_id, thread_id FROM subscriptions WHERE calendar_id = $1', [calendarId]);
         if (checkRes.rows.length > 0) {
             const existingChatId = checkRes.rows[0].chat_id;
-            if (existingChatId === ctx.chat.id) {
-                await ctx.reply(`⚠️ Цей календар вже прив'язаний до поточної групи.`);
-                ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-                return;
+            const existingThreadId = checkRes.rows[0].thread_id;
+
+            const strExistingThread = existingThreadId ? String(existingThreadId) : null;
+            const strCurrentThread = threadId ? String(threadId) : null;
+            const strExistingChat = String(existingChatId);
+            const strCurrentChat = String(ctx.chat.id);
+
+            if (strExistingChat === strCurrentChat) {
+                if (strExistingThread === strCurrentThread) {
+                    await ctx.reply(`⚠️ Цей календар вже прив'язаний до поточної групи/теми.`);
+                    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+                    return;
+                }
+            } else {
+                try {
+                    await ctx.telegram.getChat(existingChatId);
+                    await ctx.reply(`⛔️ Помилка: Цей календар вже використовується в іншій активній групі. Спочатку відв'яжіть його там.`);
+                    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+                    return;
+                } catch (e) {}
             }
-            try {
-                await ctx.telegram.getChat(existingChatId);
-                await ctx.reply(`⛔️ Помилка: Цей календар вже використовується в іншій активній групі. Спочатку відв'яжіть його там.`);
-                ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-                return;
-            } catch (e) {}
         }
 
         await pool.query(
-            `INSERT INTO subscriptions (calendar_id, chat_id, added_by) VALUES ($1, $2, $3) ON CONFLICT (calendar_id) DO UPDATE SET chat_id = $2`,
-            [calendarId, ctx.chat.id, ctx.from.id]
+            `INSERT INTO subscriptions (calendar_id, chat_id, thread_id, added_by) VALUES ($1, $2, $3, $4) 
+             ON CONFLICT (calendar_id) DO UPDATE SET chat_id = $2, thread_id = $3`,
+            [calendarId, ctx.chat.id, threadId, ctx.from.id]
         );
         
-        await ctx.reply(`✅ Календар успішно прив'язано до цієї групи!`);
+        await ctx.reply(`✅ Календар успішно прив'язано! Тепер сповіщення будуть приходити сюди.`);
         ctx.deleteMessage(ctx.message.message_id).catch(() => {});
     } catch (error) {
         ctx.reply('❌ Помилка бази даних при збереженні.');
@@ -222,13 +237,14 @@ app.post('/calendar-webhook', async (req, res) => {
     
     const client = await pool.connect();
     try {
-        const subRes = await client.query('SELECT chat_id FROM subscriptions WHERE calendar_id = $1', [calendarId]);
+        const subRes = await client.query('SELECT chat_id, thread_id FROM subscriptions WHERE calendar_id = $1', [calendarId]);
         if (subRes.rows.length === 0) {
             client.release();
             return res.status(200).send('Calendar not bound');
         }
         
         const TARGET_CHAT_ID = subRes.rows[0].chat_id;
+        const TARGET_THREAD_ID = subRes.rows[0].thread_id;
         const date = formatEventDate(start, end, calendarTimeZone);
         const endTime = parseEndTime(end);
         
@@ -256,7 +272,13 @@ app.post('/calendar-webhook', async (req, res) => {
             }
         } else if (!eventExists) {
             const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink);
-            const sentMessage = await bot.telegram.sendMessage(TARGET_CHAT_ID, text, { parse_mode: 'HTML', disable_web_page_preview: true });
+            let sendOptions = { parse_mode: 'HTML', disable_web_page_preview: true };
+            if (TARGET_THREAD_ID) {
+                sendOptions.message_thread_id = TARGET_THREAD_ID;
+            }
+            
+            const sentMessage = await bot.telegram.sendMessage(TARGET_CHAT_ID, text, sendOptions);
+            
             await client.query(
                 `INSERT INTO events (google_event_id, calendar_id, message_id, current_title, event_date, color_id, creator_email, event_link, event_end_time) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,

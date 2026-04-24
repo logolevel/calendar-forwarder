@@ -37,6 +37,10 @@ async function initDB() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `);
+
+    await pool.query(`
+        ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS thread_id BIGINT;
+    `);
 }
 
 module.exports = { pool, initDB };
