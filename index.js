@@ -213,7 +213,7 @@ bot.command('set_limit', async (ctx) => {
 bot.command('add_whitelist', async (ctx) => {
     if (ctx.chat.type === 'private') return ctx.reply('❌ Тільки для груп.');
     if (!(await isAdmin(ctx))) return;
-    
+
     ctx.deleteMessage(ctx.message.message_id).catch(() => {});
 
     const calendarId = await getCalendarForChat(ctx.chat.id);
@@ -223,14 +223,15 @@ bot.command('add_whitelist', async (ctx) => {
     if (!email || !email.includes('@')) return ctx.reply('⚠️ Формат команди: /add_whitelist <email>');
 
     await pool.query('INSERT INTO whitelist (calendar_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING', [calendarId, email]);
-    
-    ctx.reply(`✅ Користувача ${email} додано до білого списку.`);
+
+    const safeEmail = email.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
+    ctx.reply(`➕ Користувача ${safeEmail} додано до білого списку.`);
 });
 
 bot.command('remove_whitelist', async (ctx) => {
     if (ctx.chat.type === 'private') return ctx.reply('❌ Тільки для груп.');
     if (!(await isAdmin(ctx))) return;
-    
+
     ctx.deleteMessage(ctx.message.message_id).catch(() => {});
 
     const calendarId = await getCalendarForChat(ctx.chat.id);
@@ -240,8 +241,10 @@ bot.command('remove_whitelist', async (ctx) => {
     if (!email) return ctx.reply('⚠️ Формат команди: /remove_whitelist <email>');
 
     const res = await pool.query('DELETE FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, email]);
-    if (res.rowCount > 0) ctx.reply(`✅ Користувача ${email} видалено з білого списку.`);
-    else ctx.reply(`⚠️ Користувача ${email} не знайдено в білому списку.`);
+    const safeEmail = email.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
+
+    if (res.rowCount > 0) ctx.reply(`➖ Користувача ${safeEmail} видалено з білого списку.`);
+    else ctx.reply(`⚠️ Користувача ${safeEmail} не знайдено в білому списку.`);
 });
 
 bot.command('clear_whitelist', async (ctx) => {
