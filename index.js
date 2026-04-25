@@ -32,12 +32,17 @@ async function isAdmin(ctx) {
     }
 }
 
+async function getCalendarForChat(chatId) {
+    const res = await pool.query('SELECT calendar_id FROM subscriptions WHERE chat_id = $1', [chatId]);
+    return res.rows.length > 0 ? res.rows[0].calendar_id : null;
+}
+
 bot.command('stats', async (ctx) => {
     const ADMIN_ID = parseInt(process.env.ADMIN_ID, 10);
     if (ctx.from.id !== ADMIN_ID) return;
 
     try {
-        const res = await pool.query('SELECT calendar_id, chat_id, thread_id, created_at FROM subscriptions');
+        const res = await pool.query('SELECT calendar_id, chat_id, thread_id, days_limit, created_at FROM subscriptions');
         if (res.rows.length === 0) {
             return ctx.reply('📊 Бот поки не прив\'язаний до жодної групи.');
         }
@@ -54,11 +59,19 @@ bot.command('stats', async (ctx) => {
                 chatTitle = 'Група недоступна (бота видалено?)';
             }
             const date = new Date(row.created_at).toLocaleDateString('uk-UA');
-            const threadInfo = row.thread_id ? ` (в окремій темі)` : '';
+            const threadInfo = row.thread_id ? ` (в темі)` : '';
+            const limitInfo = row.days_limit > 0 ? ` (Ліміт: ${row.days_limit} дн.)` : ` (Без ліміту)`;
+            
+            const wlRes = await pool.query('SELECT email FROM whitelist WHERE calendar_id = $1', [row.calendar_id]);
+            let whitelistInfo = 'порожній';
+            if (wlRes.rows.length > 0) {
+                whitelistInfo = wlRes.rows.map(w => w.email).join(', ');
+            }
             
             text += `${i + 1}. <b>${chatTitle}</b>\n`;
             text += `Календар: <code>${row.calendar_id}</code>\n`;
-            text += `Chat ID: <code>${row.chat_id}</code>${threadInfo}\n`;
+            text += `Chat ID: <code>${row.chat_id}</code>${threadInfo}${limitInfo}\n`;
+            text += `Білий список: <i>${whitelistInfo}</i>\n`;
             text += `Додано: ${date}\n\n`;
         }
         ctx.reply(text, { parse_mode: 'HTML' });
@@ -174,6 +187,76 @@ bot.command('unbindall', async (ctx) => {
     }
 });
 
+bot.command('set_limit', async (ctx) => {
+    if (ctx.chat.type === 'private') return ctx.reply('❌ Тільки для груп.');
+    if (!(await isAdmin(ctx))) return;
+    
+    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+
+    const calendarId = await getCalendarForChat(ctx.chat.id);
+    if (!calendarId) return ctx.reply('⚠️ У цій групі немає прив\'язаного календаря.');
+
+    const args = ctx.message.text.split(' ');
+    const limit = parseInt(args[1], 10);
+
+    if (isNaN(limit) || limit < 0) {
+        return ctx.reply('⚠️ Формат команди: /set_limit <кількість_днів>\nНаприклад: /set_limit 7\nЩоб зняти ліміт, введіть: /set_limit 0');
+    }
+
+    await pool.query('UPDATE subscriptions SET days_limit = $1 WHERE calendar_id = $2', [limit, calendarId]);
+    const msg = limit === 0 
+        ? '✅ Обмеження на створення подій знято.' 
+        : `✅ Встановлено ліміт: не можна створювати події більше ніж на ${limit} днів вперед.`;
+    ctx.reply(msg);
+});
+
+bot.command('add_whitelist', async (ctx) => {
+    if (ctx.chat.type === 'private') return ctx.reply('❌ Тільки для груп.');
+    if (!(await isAdmin(ctx))) return;
+    
+    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+
+    const calendarId = await getCalendarForChat(ctx.chat.id);
+    if (!calendarId) return ctx.reply('⚠️ У цій групі немає прив\'язаного календаря.');
+
+    const email = ctx.message.text.split(' ')[1];
+    if (!email || !email.includes('@')) return ctx.reply('⚠️ Формат команди: /add_whitelist <email>');
+
+    await pool.query('INSERT INTO whitelist (calendar_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING', [calendarId, email]);
+    
+    ctx.reply(`✅ Користувача ${email} додано до білого списку.`);
+});
+
+bot.command('remove_whitelist', async (ctx) => {
+    if (ctx.chat.type === 'private') return ctx.reply('❌ Тільки для груп.');
+    if (!(await isAdmin(ctx))) return;
+    
+    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+
+    const calendarId = await getCalendarForChat(ctx.chat.id);
+    if (!calendarId) return ctx.reply('⚠️ У цій групі немає прив\'язаного календаря.');
+
+    const email = ctx.message.text.split(' ')[1];
+    if (!email) return ctx.reply('⚠️ Формат команди: /remove_whitelist <email>');
+
+    const res = await pool.query('DELETE FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, email]);
+    if (res.rowCount > 0) ctx.reply(`✅ Користувача ${email} видалено з білого списку.`);
+    else ctx.reply(`⚠️ Користувача ${email} не знайдено в білому списку.`);
+});
+
+bot.command('clear_whitelist', async (ctx) => {
+    if (ctx.chat.type === 'private') return ctx.reply('❌ Тільки для груп.');
+    if (!(await isAdmin(ctx))) return;
+    
+    ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+
+    const calendarId = await getCalendarForChat(ctx.chat.id);
+    if (!calendarId) return ctx.reply('⚠️ У цій групі немає прив\'язаного календаря.');
+
+    await pool.query('DELETE FROM whitelist WHERE calendar_id = $1', [calendarId]);
+    ctx.reply('✅ Білий список повністю очищено.');
+});
+
 function formatEventDate(start, end, timeZone) {
     if (!start) return 'Дата не вказана';
     const months = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
@@ -233,21 +316,50 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
 
 app.post('/calendar-webhook', async (req, res) => {
     const { calendarId, eventId, status, title, start, end, calendarTimeZone, colorId = '0', creatorEmail = 'невідомо', eventLink = '' } = req.body;
-    if (!calendarId) return res.status(400).send('Missing calendarId');
+    if (!calendarId) return res.status(400).json({ error: 'Missing calendarId' });
     
     const client = await pool.connect();
     try {
-        const subRes = await client.query('SELECT chat_id, thread_id FROM subscriptions WHERE calendar_id = $1', [calendarId]);
+        const subRes = await client.query('SELECT chat_id, thread_id, days_limit FROM subscriptions WHERE calendar_id = $1', [calendarId]);
         if (subRes.rows.length === 0) {
             client.release();
-            return res.status(200).send('Calendar not bound');
+            return res.status(200).json({ status: 'ignored' });
         }
         
         const TARGET_CHAT_ID = subRes.rows[0].chat_id;
         const TARGET_THREAD_ID = subRes.rows[0].thread_id;
+        const daysLimit = subRes.rows[0].days_limit || 0;
+        
         const date = formatEventDate(start, end, calendarTimeZone);
         const endTime = parseEndTime(end);
-        
+
+        if (status !== 'deleted' && daysLimit > 0 && start) {
+            const eventStartDate = new Date(start.date || start.dateTime);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const diffTime = eventStartDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays > daysLimit) {
+                const wlRes = await client.query('SELECT 1 FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, creatorEmail]);
+                if (wlRes.rows.length === 0) {
+let warningText = `⏳ <b>Обережно, мандрівники у часі!</b>\n\n`;
+                    warningText += `Користувач <i>${creatorEmail}</i> дуже поспішає і спробував запланувати подію "${title}" аж на <b>${diffDays} днів</b> вперед.\n`;
+                    warningText += `Нагадую, що наш ліміт для цієї групи — <b>${daysLimit} днів</b>. 📅\n\n`;
+                    warningText += `<i>Але не хвилюйтеся! Я вже тихенько прибрав цю подію з календаря, щоб зберегти порядок. 🧹✨</i>`;
+                    
+                    let sendOptions = { parse_mode: 'HTML' };
+                    if (TARGET_THREAD_ID) sendOptions.message_thread_id = TARGET_THREAD_ID;
+                    
+                    await bot.telegram.sendMessage(TARGET_CHAT_ID, warningText, sendOptions);
+                    
+                    client.release();
+                    return res.status(200).json({ action: 'delete' }); 
+                }
+            }
+        }
+
         await client.query('BEGIN');
         const dbRes = await client.query('SELECT * FROM events WHERE google_event_id = $1 AND calendar_id = $2 FOR UPDATE', [eventId, calendarId]);
         const eventExists = dbRes.rows.length > 0;
@@ -305,10 +417,10 @@ app.post('/calendar-webhook', async (req, res) => {
             }
         }
         await client.query('COMMIT');
-        res.status(200).send('OK');
+        res.status(200).json({ status: 'ok' });
     } catch (error) {
         await client.query('ROLLBACK');
-        res.status(500).send('Error');
+        res.status(500).json({ error: 'Server Error' });
     } finally {
         client.release();
     }
