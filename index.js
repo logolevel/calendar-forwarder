@@ -334,21 +334,23 @@ app.post('/calendar-webhook', async (req, res) => {
         const endTime = parseEndTime(end);
 
         if (status !== 'deleted' && daysLimit > 0 && start) {
-            const eventStartDate = new Date(start.date || start.dateTime);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            const eventStartDate = new Date(start.dateTime || start.date);
+            const now = new Date();
             
-            const diffTime = eventStartDate - today;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const diffTimeMs = eventStartDate.getTime() - now.getTime();
+            const limitMs = daysLimit * 24 * 60 * 60 * 1000; 
 
-            if (diffDays > daysLimit) {
+            if (diffTimeMs > limitMs) {
                 const wlRes = await client.query('SELECT 1 FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, creatorEmail]);
                 if (wlRes.rows.length === 0) {
+                    const diffDays = Math.floor(diffTimeMs / (1000 * 60 * 60 * 24));
+                    const diffHours = Math.floor((diffTimeMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    
                     const safeCreatorEmail = (creatorEmail || 'невідомо').replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
-
+                    
                     let warningText = `⏳ <b>Обережно, мандрівники у часі!</b>\n\n`;
-                    warningText += `Користувач <i>${safeCreatorEmail}</i> дуже поспішає і спробував запланувати подію "${title}" аж на <b>${diffDays} днів</b> вперед.\n`;
-                    warningText += `Нагадую, що наш ліміт для цієї групи — <b>${daysLimit} днів</b>. 📅\n\n`;
+                    warningText += `Користувач <i>${safeCreatorEmail}</i> дуже поспішає і спробував запланувати подію "${title}" на <b>${diffDays} дн. і ${diffHours} год.</b> вперед.\n`;
+                    warningText += `Нагадую, що наш точний ліміт для цієї групи — <b>${daysLimit} діб</b> (хвилина в хвилину). 📅\n\n`;
                     warningText += `<i>Але не хвилюйтеся! Я вже тихенько прибрав цю подію з календаря, щоб зберегти порядок. 🧹✨</i>`;
                     
                     let sendOptions = { parse_mode: 'HTML' };
