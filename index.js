@@ -225,7 +225,7 @@ bot.command('add_whitelist', async (ctx) => {
     await pool.query('INSERT INTO whitelist (calendar_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING', [calendarId, email]);
 
     const safeEmail = email.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
-    ctx.reply(`➕ Користувача ${safeEmail} додано до білого списку.`);
+    ctx.reply(`➕ Користувач ${safeEmail} тепер у білому списку і може офіційно ігнорувати закони часу. 😎✨`);
 });
 
 bot.command('remove_whitelist', async (ctx) => {
@@ -241,10 +241,14 @@ bot.command('remove_whitelist', async (ctx) => {
     if (!email) return ctx.reply('⚠️ Формат команди: /remove_whitelist <email>');
 
     const res = await pool.query('DELETE FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, email]);
+
     const safeEmail = email.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
 
-    if (res.rowCount > 0) ctx.reply(`➖ Користувача ${safeEmail} видалено з білого списку.`);
-    else ctx.reply(`⚠️ Користувача ${safeEmail} не знайдено в білому списку.`);
+    if (res.rowCount > 0) {
+        ctx.reply(`➖ Користувач ${safeEmail} залишає білий список і повертається до життя звичайних смертних з лімітами. 🕰️📉`);
+    } else {
+        ctx.reply(`🤷‍♂️ Користувача ${safeEmail} і так немає в білому списку. Немає кого виганяти!`);
+    }
 });
 
 bot.command('clear_whitelist', async (ctx) => {
