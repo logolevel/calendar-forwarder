@@ -344,8 +344,10 @@ app.post('/calendar-webhook', async (req, res) => {
             if (diffDays > daysLimit) {
                 const wlRes = await client.query('SELECT 1 FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, creatorEmail]);
                 if (wlRes.rows.length === 0) {
-let warningText = `⏳ <b>Обережно, мандрівники у часі!</b>\n\n`;
-                    warningText += `Користувач <i>${creatorEmail}</i> дуже поспішає і спробував запланувати подію "${title}" аж на <b>${diffDays} днів</b> вперед.\n`;
+                    const safeCreatorEmail = (creatorEmail || 'невідомо').replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
+
+                    let warningText = `⏳ <b>Обережно, мандрівники у часі!</b>\n\n`;
+                    warningText += `Користувач <i>${safeCreatorEmail}</i> дуже поспішає і спробував запланувати подію "${title}" аж на <b>${diffDays} днів</b> вперед.\n`;
                     warningText += `Нагадую, що наш ліміт для цієї групи — <b>${daysLimit} днів</b>. 📅\n\n`;
                     warningText += `<i>Але не хвилюйтеся! Я вже тихенько прибрав цю подію з календаря, щоб зберегти порядок. 🧹✨</i>`;
                     
