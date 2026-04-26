@@ -310,7 +310,7 @@ function getColorEmoji(colorValue) {
     return colorMap[val] || '⚪️';
 }
 
-function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history, eventLink) {
+function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history, eventLink, daysLimit = 0) {
     const emoji = getColorEmoji(colorValue);
     let text = `<blockquote>${emoji} ${eventDate}\n\n${currentTitle}\n\n`;
     const safeEmail = (creatorEmail || 'невідомо').replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
@@ -326,9 +326,9 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
             const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '');
             text += `${index + 1}. ${h.text} <i>(${timeStr})</i>\n`;
         });
-
+        
         if (hasFlagged) {
-            text += `\n❗️<b>Ці повідомлення були відредаговані/видалені, за межами ліміту</b>❗️\n`;
+            text += `\n❗️<b>Ця подія була відредагована поза межами ${daysLimit} денного ліміту</b>❗️\n`;
         }
     }
     text += `</blockquote>`;
@@ -413,8 +413,10 @@ app.post('/calendar-webhook', async (req, res) => {
                     updatedText += `${i + 1}. ${h.text} <i>(${timeStr})</i>\n`;
                 });
                 
-                if (hasFlagged) {
-                    updatedText += `\n❗️<b>Ці повідомлення були відредаговані/видалені, за межами ліміту</b>❗️\n`;
+                if (isFlaggedEdit) {
+                    updatedText += `\n❗️<b>Ця подія була видалена поза межами ${daysLimit} денного ліміту</b>❗️\n`;
+                } else if (hasFlagged) {
+                    updatedText += `\n❗️<b>Ця подія була відредагована поза межами ${daysLimit} денного ліміту</b>❗️\n`;
                 }
                 
                 updatedText += `</blockquote>`;
@@ -423,7 +425,7 @@ app.post('/calendar-webhook', async (req, res) => {
                 await client.query('DELETE FROM events WHERE id = $1', [event.id]);
             }
         } else if (!eventExists) {
-            const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink);
+            const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink, daysLimit);
             let opt = { parse_mode: 'HTML', disable_web_page_preview: true };
             if (TARGET_THREAD_ID) opt.message_thread_id = TARGET_THREAD_ID;
             const sent = await bot.telegram.sendMessage(TARGET_CHAT_ID, text, opt);
@@ -442,7 +444,8 @@ app.post('/calendar-webhook', async (req, res) => {
                 
                 let newH = [...event.history, { time: new Date().toISOString(), text: rec }];
                 await client.query('UPDATE events SET current_title=$1, history=$2::jsonb, color_id=$3, event_date=$4, event_link=$5, event_end_time=$6 WHERE id=$7', [title, JSON.stringify(newH), colorId, date, (eventLink || event.event_link), endTime, event.id]);
-                const updText = buildMessage(date, colorId, title, event.creator_email, newH, (eventLink || event.event_link));
+                
+                const updText = buildMessage(date, colorId, title, event.creator_email, newH, (eventLink || event.event_link), daysLimit);
                 try { await bot.telegram.editMessageText(TARGET_CHAT_ID, event.message_id, null, updText, { parse_mode: 'HTML', disable_web_page_preview: true }); } catch (e) {}
                 await bot.telegram.sendMessage(TARGET_CHAT_ID, `Відредаговано`, { reply_parameters: { message_id: event.message_id } });
             }
