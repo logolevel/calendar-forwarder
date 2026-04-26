@@ -331,25 +331,16 @@ app.post('/calendar-webhook', async (req, res) => {
     const { calendarId, eventId, status, title, start, end, calendarTimeZone, colorId = '0' } = req.body;
     const rawCreatorEmail = req.body.creatorEmail || 'невідомо';
     const creatorEmail = rawCreatorEmail.trim().toLowerCase();
-
     const eventLink = req.body.eventLink || '';
 
-    const rawModifierEmail = req.body.lastModifyingUserEmail || rawCreatorEmail;
-    const modifierEmail = rawModifierEmail.trim().toLowerCase();
-
-    const safeModifierEmail = modifierEmail.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
-
     if (!calendarId) return res.status(400).json({ error: 'Missing calendarId' });
-
     const client = await pool.connect();
-
     try {
         const subRes = await client.query('SELECT chat_id, thread_id, days_limit FROM subscriptions WHERE calendar_id = $1', [calendarId]);
         if (subRes.rows.length === 0) {
             client.release();
             return res.status(200).json({ status: 'ignored' });
         }
-        
         const TARGET_CHAT_ID = subRes.rows[0].chat_id;
         const TARGET_THREAD_ID = subRes.rows[0].thread_id;
         const daysLimit = subRes.rows[0].days_limit || 0;
@@ -359,94 +350,64 @@ app.post('/calendar-webhook', async (req, res) => {
         const eventExists = dbRes.rows.length > 0;
 
         let isOutsideLimit = false;
-        
         if (daysLimit > 0) {
             let checkDate = null;
-            if (start && (start.dateTime || start.date)) {
-                checkDate = new Date(start.dateTime || start.date);
-            } else if (eventExists && dbRes.rows[0].event_end_time) {
-                checkDate = new Date(dbRes.rows[0].event_end_time);
-            }
-            
+            if (start && (start.dateTime || start.date)) checkDate = new Date(start.dateTime || start.date);
+            else if (eventExists && dbRes.rows[0].event_end_time) checkDate = new Date(dbRes.rows[0].event_end_time);
             if (checkDate) {
                 const diffTimeMs = checkDate.getTime() - new Date().getTime();
-                const limitMs = daysLimit * 24 * 60 * 60 * 1000;
-                if (diffTimeMs > limitMs) isOutsideLimit = true;
+                if (diffTimeMs > (daysLimit * 24 * 60 * 60 * 1000)) isOutsideLimit = true;
             }
         }
 
-        let isUnauthorizedEdit = false;
-
+        let isFlaggedEdit = false;
         if (isOutsideLimit) {
-            const wlRes = await client.query('SELECT 1 FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, modifierEmail]);
-            if (wlRes.rows.length === 0) {
-                if (!eventExists && status !== 'deleted') {
+            if (!eventExists && status !== 'deleted') {
+                const wlRes = await client.query('SELECT 1 FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, creatorEmail]);
+                if (wlRes.rows.length === 0) {
                     const diffTimeMs = new Date(start.dateTime || start.date).getTime() - new Date().getTime();
                     const diffDays = Math.floor(diffTimeMs / (1000 * 60 * 60 * 24));
                     const diffHours = Math.floor((diffTimeMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                     const diffMinutes = Math.floor((diffTimeMs % (1000 * 60 * 60)) / (1000 * 60));
-                    
-                    let warningText = `⏳ <b>Обережно, мандрівники у часі!</b>\n\n`;
-                    warningText += `Користувач <i>${safeModifierEmail}</i> спробував створити подію "${title}" на <b>${diffDays} дн. ${diffHours} год. і ${diffMinutes} хв.</b> вперед.\n`;
-                    warningText += `Нагадую, що наш точний ліміт для цієї групи — <b>${daysLimit} діб</b>. 📅\n\n`;
-                    warningText += `<i>Але не хвилюйтеся! Я вже тихенько прибрав цю подію з календаря. 🧹✨</i>`;
-                    
+                    const safeEmail = creatorEmail.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
+                    let warningText = `⏳ <b>Обережно, мандрівники у часі!</b>\n\nКористувач <i>${safeEmail}</i> спробував створити подію "${title}" на <b>${diffDays} дн. ${diffHours} год. і ${diffMinutes} хв.</b> вперед.\nНагадую про ліміт <b>${daysLimit} діб</b>. 📅\n\n<i>Я прибрав цю подію з календаря. 🧹✨</i>`;
                     let sendOptions = { parse_mode: 'HTML' };
                     if (TARGET_THREAD_ID) sendOptions.message_thread_id = TARGET_THREAD_ID;
-                    
                     await bot.telegram.sendMessage(TARGET_CHAT_ID, warningText, sendOptions);
-                    
                     await client.query('ROLLBACK');
                     client.release();
                     return res.status(200).json({ action: 'delete' });
-                } else if (eventExists) {
-                    isUnauthorizedEdit = true;
                 }
+            } else if (eventExists) {
+                isFlaggedEdit = true;
             }
         }
 
         const date = formatEventDate(start, end, calendarTimeZone);
         const endTime = parseEndTime(end);
 
-        if (status === 'deleted') {
-            if (eventExists) {
-                 const event = dbRes.rows[0];
-                 let finalHistory = event.history || [];
-                 
-                 let deleteText = `<s>${event.current_title}</s>`;
-                 if (isUnauthorizedEdit) {
-                     deleteText += ` ❗️ <b>Видалив(ла):</b> <i>${safeModifierEmail}</i>`;
-                 }
-                 
-                 finalHistory.push({ time: new Date().toISOString(), text: deleteText });
-                 const safeEmail = (event.creator_email || 'невідомо').replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
-                 
-                 let updatedText = `<blockquote><b>Подія була видалена</b>\n\n<i>Створювалась: ${safeEmail}</i>\n\n🕒 Історія редагування:\n\n`;
-                 finalHistory.forEach((h, index) => {
-                     const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '');
-                     updatedText += `${index + 1}. ${h.text} <i>(${timeStr})</i>\n`;
-                 });
-                 updatedText += `</blockquote>`;
-                 
-                 try {
-                     await bot.telegram.editMessageText(TARGET_CHAT_ID, event.message_id, null, updatedText, { parse_mode: 'HTML', disable_web_page_preview: true });
-                 } catch (err) {}
-                 await bot.telegram.sendMessage(TARGET_CHAT_ID, `Видалено`, { reply_parameters: { message_id: event.message_id } });
-                 await client.query('DELETE FROM events WHERE id = $1', [event.id]);
-            }
+        if (status === 'deleted' && eventExists) {
+            const event = dbRes.rows[0];
+            let history = event.history || [];
+            let deleteText = `<s>${event.current_title}</s>`;
+            if (isFlaggedEdit) deleteText += ` ❗️ <b>Видалив(ла):</b> <i>хтось</i>`;
+            history.push({ time: new Date().toISOString(), text: deleteText });
+            const safeEmail = event.creator_email.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
+            let updatedText = `<blockquote><b>Подія була видалена</b>\n\n<i>Створювалась: ${safeEmail}</i>\n\n🕒 Історія редагування:\n\n`;
+            history.forEach((h, i) => {
+                const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+                updatedText += `${i + 1}. ${h.text} <i>(${timeStr})</i>\n`;
+            });
+            updatedText += `</blockquote>`;
+            try { await bot.telegram.editMessageText(TARGET_CHAT_ID, event.message_id, null, updatedText, { parse_mode: 'HTML', disable_web_page_preview: true }); } catch (e) {}
+            await bot.telegram.sendMessage(TARGET_CHAT_ID, `Видалено`, { reply_parameters: { message_id: event.message_id } });
+            await client.query('DELETE FROM events WHERE id = $1', [event.id]);
         } else if (!eventExists) {
             const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink);
-            
-            let sendOptions = { parse_mode: 'HTML', disable_web_page_preview: true };
-            if (TARGET_THREAD_ID) sendOptions.message_thread_id = TARGET_THREAD_ID;
-            
-            const sentMessage = await bot.telegram.sendMessage(TARGET_CHAT_ID, text, sendOptions);
-            
-            await client.query(
-                `INSERT INTO events (google_event_id, calendar_id, message_id, current_title, event_date, color_id, creator_email, event_link, event_end_time) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-                [eventId, calendarId, sentMessage.message_id, title, date, colorId, creatorEmail, eventLink, endTime]
-            );
+            let opt = { parse_mode: 'HTML', disable_web_page_preview: true };
+            if (TARGET_THREAD_ID) opt.message_thread_id = TARGET_THREAD_ID;
+            const sent = await bot.telegram.sendMessage(TARGET_CHAT_ID, text, opt);
+            await client.query(`INSERT INTO events (google_event_id, calendar_id, message_id, current_title, event_date, color_id, creator_email, event_link, event_end_time) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [eventId, calendarId, sent.message_id, title, date, colorId, creatorEmail, eventLink, endTime]);
         } else {
             const event = dbRes.rows[0];
             let changes = [];
@@ -454,36 +415,19 @@ app.post('/calendar-webhook', async (req, res) => {
             if (event.event_date !== date) changes.push(`<s>${event.event_date}</s>`);
             if (event.color_id !== colorId) changes.push(`<s>Майданчик ${getColorEmoji(event.color_id)}</s>`);
             
-            if (changes.length > 0 || isUnauthorizedEdit) {
-                 let historyRecordText = changes.length > 0 ? changes.join(', ') : 'Оновлення без текстових змін';
-                 
-                 if (isUnauthorizedEdit) {
-                     historyRecordText += ` ❗️ <b>Змінив(ла):</b> <i>${safeModifierEmail}</i>`;
-                 }
-                 
-                 let newHistory = [...event.history, { time: new Date().toISOString(), text: historyRecordText }];
-                 const finalLink = eventLink || event.event_link;
-                 
-                 await client.query(
-                     'UPDATE events SET current_title = $1, history = $2::jsonb, color_id = $3, event_date = $4, event_link = $5, event_end_time = $6 WHERE id = $7',
-                     [title, JSON.stringify(newHistory), colorId, date, finalLink, endTime, event.id]
-                 );
-                 
-                 const updatedText = buildMessage(date, colorId, title, event.creator_email, newHistory, finalLink);
-                 try {
-                     await bot.telegram.editMessageText(TARGET_CHAT_ID, event.message_id, null, updatedText, { parse_mode: 'HTML', disable_web_page_preview: true });
-                 } catch (err) {}
-                 await bot.telegram.sendMessage(TARGET_CHAT_ID, `Відредаговано`, { reply_parameters: { message_id: event.message_id } });
+            if (changes.length > 0 || isFlaggedEdit) {
+                let rec = changes.length > 0 ? changes.join(', ') : 'Оновлення без текстових змін';
+                if (isFlaggedEdit) rec += ` ❗️ <b>Змінив(ла):</b> <i>хтось</i>`;
+                let newH = [...event.history, { time: new Date().toISOString(), text: rec }];
+                await client.query('UPDATE events SET current_title=$1, history=$2::jsonb, color_id=$3, event_date=$4, event_link=$5, event_end_time=$6 WHERE id=$7', [title, JSON.stringify(newH), colorId, date, (eventLink || event.event_link), endTime, event.id]);
+                const updText = buildMessage(date, colorId, title, event.creator_email, newH, (eventLink || event.event_link));
+                try { await bot.telegram.editMessageText(TARGET_CHAT_ID, event.message_id, null, updText, { parse_mode: 'HTML', disable_web_page_preview: true }); } catch (e) {}
+                await bot.telegram.sendMessage(TARGET_CHAT_ID, `Відредаговано`, { reply_parameters: { message_id: event.message_id } });
             }
         }
         await client.query('COMMIT');
         res.status(200).json({ status: 'ok' });
-    } catch (error) {
-        await client.query('ROLLBACK');
-        res.status(500).json({ error: 'Server Error' });
-    } finally {
-        client.release();
-    }
+    } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: 'Server Error' }); } finally { client.release(); }
 });
 
 bot.launch();
