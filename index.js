@@ -316,12 +316,20 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
     const safeEmail = (creatorEmail || 'невідомо').replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
     text += `<i>Створено: ${safeEmail}</i>\n\n`;
     if (eventLink) text += `<a href="${eventLink}">Посилання на подію</a>`;
+    
+    let hasFlagged = false;
+
     if (history && history.length > 0) {
         text += `\n\n🕒 Історія редагування:\n\n`;
         history.forEach((h, index) => {
+            if (h.text.includes('❗️<b>')) hasFlagged = true;
             const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '');
             text += `${index + 1}. ${h.text} <i>(${timeStr})</i>\n`;
         });
+
+        if (hasFlagged) {
+            text += `\n❗️<b>Ці повідомлення були відредаговані/видалені, за межами ліміту</b>❗️\n`;
+        }
     }
     text += `</blockquote>`;
     return text;
@@ -391,14 +399,24 @@ app.post('/calendar-webhook', async (req, res) => {
                 const event = dbRes.rows[0];
                 let history = event.history || [];
                 let deleteText = `<s>${event.current_title}</s>`;
-                if (isFlaggedEdit) deleteText += ` ❗️ <b>Видалив(ла):</b> <i>хтось</i>`;
+                
+                if (isFlaggedEdit) deleteText = `❗️<b>${deleteText}</b>❗️`;
+                
                 history.push({ time: new Date().toISOString(), text: deleteText });
                 const safeEmail = event.creator_email.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
                 let updatedText = `<blockquote><b>Подія була видалена</b>\n\n<i>Створювалась: ${safeEmail}</i>\n\n🕒 Історія редагування:\n\n`;
+                
+                let hasFlagged = false;
                 history.forEach((h, i) => {
+                    if (h.text.includes('❗️<b>')) hasFlagged = true;
                     const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
                     updatedText += `${i + 1}. ${h.text} <i>(${timeStr})</i>\n`;
                 });
+                
+                if (hasFlagged) {
+                    updatedText += `\n❗️<b>Ці повідомлення були відредаговані/видалені, за межами ліміту</b>❗️\n`;
+                }
+                
                 updatedText += `</blockquote>`;
                 try { await bot.telegram.editMessageText(TARGET_CHAT_ID, event.message_id, null, updatedText, { parse_mode: 'HTML', disable_web_page_preview: true }); } catch (e) {}
                 await bot.telegram.sendMessage(TARGET_CHAT_ID, `Видалено`, { reply_parameters: { message_id: event.message_id } });
@@ -419,7 +437,9 @@ app.post('/calendar-webhook', async (req, res) => {
             
             if (changes.length > 0 || isFlaggedEdit) {
                 let rec = changes.length > 0 ? changes.join(', ') : 'Оновлення без текстових змін';
-                if (isFlaggedEdit) rec += ` ❗️ <b>Змінив(ла):</b> <i>хтось</i>`;
+                
+                if (isFlaggedEdit) rec = `❗️<b>${rec}</b>❗️`;
+                
                 let newH = [...event.history, { time: new Date().toISOString(), text: rec }];
                 await client.query('UPDATE events SET current_title=$1, history=$2::jsonb, color_id=$3, event_date=$4, event_link=$5, event_end_time=$6 WHERE id=$7', [title, JSON.stringify(newH), colorId, date, (eventLink || event.event_link), endTime, event.id]);
                 const updText = buildMessage(date, colorId, title, event.creator_email, newH, (eventLink || event.event_link));
