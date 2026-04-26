@@ -313,7 +313,7 @@ function getColorEmoji(colorValue) {
 function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history, eventLink, daysLimit = 0) {
     const emoji = getColorEmoji(colorValue);
     let text = `<blockquote>${emoji} ${eventDate}\n\n${currentTitle}\n\n`;
-    const safeEmail = (creatorEmail || 'невідомо').replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
+    const safeEmail = creatorEmail.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
     text += `<i>Створено: ${safeEmail}</i>\n\n`;
     if (eventLink) text += `<a href="${eventLink}">Посилання на подію</a>`;
     
@@ -399,17 +399,20 @@ app.post('/calendar-webhook', async (req, res) => {
                 const event = dbRes.rows[0];
                 let history = event.history || [];
                 let deleteText = `<s>${event.current_title}</s>`;
-                
+
                 if (isFlaggedEdit) deleteText = `❗️<b>${deleteText}</b>❗️`;
                 
                 history.push({ time: new Date().toISOString(), text: deleteText });
+                
                 const safeEmail = event.creator_email.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
-                let updatedText = `<blockquote><b>Подія була видалена</b>\n\n<i>Створювалась: ${safeEmail}</i>\n\n🕒 Історія редагування:\n\n`;
+                
+                const emoji = getColorEmoji(event.color_id);
+                let updatedText = `<blockquote><s>${emoji} ${event.event_date}</s>\n\n<b>Подія була видалена</b>\n\n<i>Створювалась: ${safeEmail}</i>\n\n🕒 Історія редагування:\n\n`;
                 
                 let hasFlagged = false;
                 history.forEach((h, i) => {
                     if (h.text.includes('❗️<b>')) hasFlagged = true;
-                    const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+                    const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '');
                     updatedText += `${i + 1}. ${h.text} <i>(${timeStr})</i>\n`;
                 });
                 
@@ -421,15 +424,11 @@ app.post('/calendar-webhook', async (req, res) => {
                 
                 updatedText += `</blockquote>`;
                 try { await bot.telegram.editMessageText(TARGET_CHAT_ID, event.message_id, null, updatedText, { parse_mode: 'HTML', disable_web_page_preview: true }); } catch (e) {}
-                await bot.telegram.sendMessage(TARGET_CHAT_ID, `Видалено`, { reply_parameters: { message_id: event.message_id } });
+                
+                await bot.telegram.sendMessage(TARGET_CHAT_ID, `❌ Видалено`, { reply_parameters: { message_id: event.message_id } });
                 await client.query('DELETE FROM events WHERE id = $1', [event.id]);
             }
         } else if (!eventExists) {
-            const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink, daysLimit);
-            let opt = { parse_mode: 'HTML', disable_web_page_preview: true };
-            if (TARGET_THREAD_ID) opt.message_thread_id = TARGET_THREAD_ID;
-            const sent = await bot.telegram.sendMessage(TARGET_CHAT_ID, text, opt);
-            await client.query(`INSERT INTO events (google_event_id, calendar_id, message_id, current_title, event_date, color_id, creator_email, event_link, event_end_time) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [eventId, calendarId, sent.message_id, title, date, colorId, creatorEmail, eventLink, endTime]);
         } else {
             const event = dbRes.rows[0];
             let changes = [];
