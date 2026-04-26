@@ -352,11 +352,12 @@ app.post('/calendar-webhook', async (req, res) => {
                 if (wlRes.rows.length === 0) {
                     const diffDays = Math.floor(diffTimeMs / (1000 * 60 * 60 * 24));
                     const diffHours = Math.floor((diffTimeMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const diffMinutes = Math.floor((diffTimeMs % (1000 * 60 * 60)) / (1000 * 60));
                     
                     const safeCreatorEmail = (creatorEmail || 'невідомо').replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
                     
                     let warningText = `⏳ <b>Обережно, мандрівники у часі!</b>\n\n`;
-                    warningText += `Користувач <i>${safeCreatorEmail}</i> дуже поспішає і спробував запланувати подію "${title}" на <b>${diffDays} дн. і ${diffHours} год.</b> вперед.\n`;
+                    warningText += `Користувач <i>${safeCreatorEmail}</i> дуже поспішає і спробував запланувати подію "${title}" на <b>${diffDays} дн. ${diffHours} год. і ${diffMinutes} хв.</b> вперед.\n`;
                     warningText += `Нагадую, що наш точний ліміт для цієї групи — <b>${daysLimit} діб</b> (хвилина в хвилину). 📅\n\n`;
                     warningText += `<i>Але не хвилюйтеся! Я вже тихенько прибрав цю подію з календаря, щоб зберегти порядок. 🧹✨</i>`;
                     
