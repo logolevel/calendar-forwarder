@@ -219,8 +219,11 @@ bot.command('add_whitelist', async (ctx) => {
     const calendarId = await getCalendarForChat(ctx.chat.id);
     if (!calendarId) return ctx.reply('⚠️ У цій групі немає прив\'язаного календаря.');
 
-    const email = ctx.message.text.split(' ')[1];
-    if (!email || !email.includes('@')) return ctx.reply('⚠️ Формат команди: /add_whitelist <email>');
+    const args = ctx.message.text.split(/\s+/);
+    const rawEmail = args[1];
+    if (!rawEmail || !rawEmail.includes('@')) return ctx.reply('⚠️ Формат команди: /add_whitelist <email>');
+
+    const email = rawEmail.trim().toLowerCase();
 
     await pool.query('INSERT INTO whitelist (calendar_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING', [calendarId, email]);
 
@@ -237,8 +240,11 @@ bot.command('remove_whitelist', async (ctx) => {
     const calendarId = await getCalendarForChat(ctx.chat.id);
     if (!calendarId) return ctx.reply('⚠️ У цій групі немає прив\'язаного календаря.');
 
-    const email = ctx.message.text.split(' ')[1];
-    if (!email) return ctx.reply('⚠️ Формат команди: /remove_whitelist <email>');
+    const args = ctx.message.text.split(/\s+/);
+    const rawEmail = args[1];
+    if (!rawEmail) return ctx.reply('⚠️ Формат команди: /remove_whitelist <email>');
+
+    const email = rawEmail.trim().toLowerCase();
 
     const res = await pool.query('DELETE FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, email]);
 
@@ -322,15 +328,21 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
 }
 
 app.post('/calendar-webhook', async (req, res) => {
-    const { calendarId, eventId, status, title, start, end, calendarTimeZone, colorId = '0', creatorEmail = 'невідомо' } = req.body;
+    const { calendarId, eventId, status, title, start, end, calendarTimeZone, colorId = '0' } = req.body;
+    const rawCreatorEmail = req.body.creatorEmail || 'невідомо';
+    const creatorEmail = rawCreatorEmail.trim().toLowerCase();
+
     const eventLink = req.body.eventLink || '';
-    
-    const modifierEmail = req.body.lastModifyingUserEmail || creatorEmail || 'невідомо';
+
+    const rawModifierEmail = req.body.lastModifyingUserEmail || rawCreatorEmail;
+    const modifierEmail = rawModifierEmail.trim().toLowerCase();
+
     const safeModifierEmail = modifierEmail.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
 
     if (!calendarId) return res.status(400).json({ error: 'Missing calendarId' });
-    
+
     const client = await pool.connect();
+
     try {
         const subRes = await client.query('SELECT chat_id, thread_id, days_limit FROM subscriptions WHERE calendar_id = $1', [calendarId]);
         if (subRes.rows.length === 0) {
