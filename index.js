@@ -386,22 +386,24 @@ app.post('/calendar-webhook', async (req, res) => {
         const date = formatEventDate(start, end, calendarTimeZone);
         const endTime = parseEndTime(end);
 
-        if (status === 'deleted' && eventExists) {
-            const event = dbRes.rows[0];
-            let history = event.history || [];
-            let deleteText = `<s>${event.current_title}</s>`;
-            if (isFlaggedEdit) deleteText += ` ❗️ <b>Видалив(ла):</b> <i>хтось</i>`;
-            history.push({ time: new Date().toISOString(), text: deleteText });
-            const safeEmail = event.creator_email.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
-            let updatedText = `<blockquote><b>Подія була видалена</b>\n\n<i>Створювалась: ${safeEmail}</i>\n\n🕒 Історія редагування:\n\n`;
-            history.forEach((h, i) => {
-                const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
-                updatedText += `${i + 1}. ${h.text} <i>(${timeStr})</i>\n`;
-            });
-            updatedText += `</blockquote>`;
-            try { await bot.telegram.editMessageText(TARGET_CHAT_ID, event.message_id, null, updatedText, { parse_mode: 'HTML', disable_web_page_preview: true }); } catch (e) {}
-            await bot.telegram.sendMessage(TARGET_CHAT_ID, `Видалено`, { reply_parameters: { message_id: event.message_id } });
-            await client.query('DELETE FROM events WHERE id = $1', [event.id]);
+        if (status === 'deleted') {
+            if (eventExists) {
+                const event = dbRes.rows[0];
+                let history = event.history || [];
+                let deleteText = `<s>${event.current_title}</s>`;
+                if (isFlaggedEdit) deleteText += ` ❗️ <b>Видалив(ла):</b> <i>хтось</i>`;
+                history.push({ time: new Date().toISOString(), text: deleteText });
+                const safeEmail = event.creator_email.replace(/@/g, '@\u200B').replace(/\./g, '.\u200B');
+                let updatedText = `<blockquote><b>Подія була видалена</b>\n\n<i>Створювалась: ${safeEmail}</i>\n\n🕒 Історія редагування:\n\n`;
+                history.forEach((h, i) => {
+                    const timeStr = new Date(h.time).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+                    updatedText += `${i + 1}. ${h.text} <i>(${timeStr})</i>\n`;
+                });
+                updatedText += `</blockquote>`;
+                try { await bot.telegram.editMessageText(TARGET_CHAT_ID, event.message_id, null, updatedText, { parse_mode: 'HTML', disable_web_page_preview: true }); } catch (e) {}
+                await bot.telegram.sendMessage(TARGET_CHAT_ID, `Видалено`, { reply_parameters: { message_id: event.message_id } });
+                await client.query('DELETE FROM events WHERE id = $1', [event.id]);
+            }
         } else if (!eventExists) {
             const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink);
             let opt = { parse_mode: 'HTML', disable_web_page_preview: true };
