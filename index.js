@@ -429,6 +429,17 @@ app.post('/calendar-webhook', async (req, res) => {
                 await client.query('DELETE FROM events WHERE id = $1', [event.id]);
             }
         } else if (!eventExists) {
+            const text = buildMessage(date, colorId, title, creatorEmail, [], eventLink, daysLimit);
+            let opt = { parse_mode: 'HTML', disable_web_page_preview: true };
+            if (TARGET_THREAD_ID) opt.message_thread_id = TARGET_THREAD_ID;
+            
+            const sent = await bot.telegram.sendMessage(TARGET_CHAT_ID, text, opt);
+            
+            await client.query(
+                `INSERT INTO events (google_event_id, calendar_id, message_id, current_title, event_date, color_id, creator_email, event_link, event_end_time) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, 
+                [eventId, calendarId, sent.message_id, title, date, colorId, creatorEmail, eventLink, endTime]
+            );
         } else {
             const event = dbRes.rows[0];
             let changes = [];
