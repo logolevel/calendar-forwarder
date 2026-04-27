@@ -75,6 +75,25 @@
 
         .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background-color: #ff0d0d; color: white; border: none; border-radius: 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.8rem; font-weight: bold; cursor: pointer; z-index: 10; transition: background-color 0.2s; }
         .copy-btn:hover { background-color: #cc0000; }
+
+        .heading-anchor {
+            display: inline-block;
+            margin-left: 0.5rem;
+            font-weight: 400;
+            color: #adb5bd;
+            text-decoration: none;
+            opacity: 0;
+            transition: opacity 0.15s, color 0.15s;
+            user-select: none;
+        }
+        h1:hover .heading-anchor,
+        h2:hover .heading-anchor,
+        .heading-anchor:focus { opacity: 1; }
+        .heading-anchor:hover { color: #0d6efd; text-decoration: none; }
+        .heading-anchor.copied { opacity: 1; color: #198754; }
+        @media (max-width: 768px) {
+            .heading-anchor { opacity: 0.5; }
+        }
     </style>
 </head>
 <body data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
@@ -177,58 +196,40 @@ function setupTrigger() {
   for (let i = 0; i < triggers.length; i++) {
     ScriptApp.deleteTrigger(triggers[i]);
   }
-  
   PropertiesService.getScriptProperties().deleteAllProperties();
-  
   CALENDAR_IDS.forEach(calendarId => {
     try {
-      ScriptApp.newTrigger('onCalendarSync')
-        .forUserCalendar(calendarId)
-        .onEventUpdated()
-        .create();
-        
+      ScriptApp.newTrigger('onCalendarSync').forUserCalendar(calendarId).onEventUpdated().create();
       fetchAndSaveSyncToken(calendarId);
-    } catch (e) {
-      console.error('Помилка створення тригера для календаря ' + calendarId + ': ' + e.message);
-    }
+    } catch (e) {}
   });
 }
 
 function fetchAndSaveSyncToken(calendarId) {
   try {
-    const calendar = Calendar.Events.list(calendarId, {
-      timeMin: (new Date()).toISOString()
-    });
+    const calendar = Calendar.Events.list(calendarId, { timeMin: (new Date()).toISOString() });
     PropertiesService.getScriptProperties().setProperty('syncToken_' + calendarId, calendar.nextSyncToken);
-  } catch (e) {
-    console.error('Помилка отримання токена для ' + calendarId + ': ' + e.message);
-  }
+  } catch (e) {}
 }
 
 function onCalendarSync(e) {
   const currentCalendarId = e.calendarId; 
   if (!currentCalendarId) return;
-
   const properties = PropertiesService.getScriptProperties();
   const tokenKey = 'syncToken_' + currentCalendarId;
   const syncToken = properties.getProperty(tokenKey);
-  
   let options = { showDeleted: true };
-  if (syncToken) {
-    options.syncToken = syncToken;
-  } else {
-    options.timeMin = (new Date()).toISOString();
-  }
+  if (syncToken) options.syncToken = syncToken;
+  else options.timeMin = (new Date()).toISOString();
   
   const cal = CalendarApp.getCalendarById(currentCalendarId);
-  const calendarDefaultHex = cal ? cal.getColor() : '#039be5';
   const calendarTimeZone = cal ? cal.getTimeZone() : 'Europe/Kyiv';
+  const calendarDefaultHex = cal ? cal.getColor() : '#039be5';
   
   try {
     const events = Calendar.Events.list(currentCalendarId, options);
     events.items.forEach(item => {
       let status = (item.status === 'cancelled') ? 'deleted' : (item.created === item.updated ? 'created' : 'updated');
-      
       const payload = {
         calendarId: currentCalendarId,
         eventId: item.id,
@@ -238,26 +239,29 @@ function onCalendarSync(e) {
         end: item.end,
         calendarTimeZone: calendarTimeZone,
         colorId: item.colorId || calendarDefaultHex,
-        creatorEmail: (item.creator && item.creator.email) ? item.creator.email : 'невідомо',
+        creatorEmail: item.creator ? item.creator.email : 'невідомо',
         eventLink: item.htmlLink || ''
       };
-      
-      UrlFetchApp.fetch(WEBHOOK_URL, {
+      const response = UrlFetchApp.fetch(WEBHOOK_URL, {
         method: 'post',
         contentType: 'application/json',
         payload: JSON.stringify(payload),
         muteHttpExceptions: true
       });
+      if (response.getResponseCode() === 200) {
+        try {
+          const result = JSON.parse(response.getContentText());
+          if (result.action === 'delete') Calendar.Events.remove(currentCalendarId, item.id);
+        } catch (f) {}
+      }
     });
-    
-    if (events.nextSyncToken) {
-      properties.setProperty(tokenKey, events.nextSyncToken);
-    }
+    if (events.nextSyncToken) properties.setProperty(tokenKey, events.nextSyncToken);
   } catch (error) {
     properties.deleteProperty(tokenKey);
     fetchAndSaveSyncToken(currentCalendarId);
   }
-}</code></pre>
+}
+</code></pre>
                             </div>
                         </div>
                     </div>
@@ -446,6 +450,42 @@ function onCalendarSync(e) {
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('main section[id]').forEach(section => {
+                const heading = section.querySelector('h1, h2');
+                if (!heading) return;
+                const anchor = document.createElement('a');
+                anchor.href = '#' + section.id;
+                anchor.className = 'heading-anchor';
+                anchor.setAttribute('aria-label', 'Скопіювати посилання на розділ');
+                anchor.title = 'Скопіювати посилання на розділ';
+                anchor.textContent = '#';
+                anchor.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const url = window.location.origin + window.location.pathname + '#' + section.id;
+                    history.replaceState(null, '', '#' + section.id);
+                    const showCopied = () => {
+                        const original = anchor.textContent;
+                        anchor.textContent = '✓ скопійовано';
+                        anchor.classList.add('copied');
+                        setTimeout(() => {
+                            anchor.textContent = original;
+                            anchor.classList.remove('copied');
+                        }, 1500);
+                    };
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(url).then(showCopied).catch(() => {});
+                    } else {
+                        const ta = document.createElement('textarea');
+                        ta.value = url;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        try { document.execCommand('copy'); showCopied(); } catch (err) {}
+                        document.body.removeChild(ta);
+                    }
+                });
+                heading.appendChild(anchor);
+            });
+
             const offcanvasElement = document.getElementById('sidebarOffcanvas');
             document.querySelectorAll('#sidebarOffcanvas .nav-link').forEach(link => {
                 link.addEventListener('click', () => {
