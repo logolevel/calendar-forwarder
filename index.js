@@ -37,6 +37,14 @@ async function getCalendarForChat(chatId) {
     return res.rows.length > 0 ? res.rows[0].calendar_id : null;
 }
 
+function normalizeEmail(raw) {
+    if (!raw) return '';
+    return String(raw)
+        .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF\u00A0]/g, '')
+        .trim()
+        .toLowerCase();
+}
+
 bot.command('stats', async (ctx) => {
     const ADMIN_ID = parseInt(process.env.ADMIN_ID, 10);
     if (ctx.from.id !== ADMIN_ID) return;
@@ -220,10 +228,8 @@ bot.command('add_whitelist', async (ctx) => {
     if (!calendarId) return ctx.reply('⚠️ У цій групі немає прив\'язаного календаря.');
 
     const args = ctx.message.text.split(/\s+/);
-    const rawEmail = args[1];
-    if (!rawEmail || !rawEmail.includes('@')) return ctx.reply('⚠️ Формат команди: /add_whitelist <email>');
-
-    const email = rawEmail.trim().toLowerCase();
+    const email = normalizeEmail(args[1]);
+    if (!email || !email.includes('@')) return ctx.reply('⚠️ Формат команди: /add_whitelist <email>');
 
     await pool.query('INSERT INTO whitelist (calendar_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING', [calendarId, email]);
 
@@ -241,10 +247,8 @@ bot.command('remove_whitelist', async (ctx) => {
     if (!calendarId) return ctx.reply('⚠️ У цій групі немає прив\'язаного календаря.');
 
     const args = ctx.message.text.split(/\s+/);
-    const rawEmail = args[1];
-    if (!rawEmail) return ctx.reply('⚠️ Формат команди: /remove_whitelist <email>');
-
-    const email = rawEmail.trim().toLowerCase();
+    const email = normalizeEmail(args[1]);
+    if (!email) return ctx.reply('⚠️ Формат команди: /remove_whitelist <email>');
 
     const res = await pool.query('DELETE FROM whitelist WHERE calendar_id = $1 AND email = $2', [calendarId, email]);
 
@@ -337,8 +341,7 @@ function buildMessage(eventDate, colorValue, currentTitle, creatorEmail, history
 
 app.post('/calendar-webhook', async (req, res) => {
     const { calendarId, eventId, status, title, start, end, calendarTimeZone, colorId = '0' } = req.body;
-    const rawCreatorEmail = req.body.creatorEmail || 'невідомо';
-    const creatorEmail = rawCreatorEmail.trim().toLowerCase();
+    const creatorEmail = normalizeEmail(req.body.creatorEmail) || 'невідомо';
     const eventLink = req.body.eventLink || '';
 
     if (!calendarId) return res.status(400).json({ error: 'Missing calendarId' });

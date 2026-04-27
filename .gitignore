@@ -1,4 +1,4 @@
 node_modules/
 temp.md
-appsscript.js
-appsscript_new.js
+appsscript_prev.js
+appsscript_current.js
